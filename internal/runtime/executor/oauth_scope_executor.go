@@ -9,17 +9,7 @@ func (e CodexExecutor) ForAPIKey() cliproxyauth.ProviderExecutor {
 	return &e
 }
 
-func (e ClaudeExecutor) ForAPIKey() cliproxyauth.ProviderExecutor {
-	e.cfg = e.cfg.ForAPIKey()
-	return &e
-}
-
 func (e OpenAICompatExecutor) ForAPIKey() cliproxyauth.ProviderExecutor {
-	e.cfg = e.cfg.ForAPIKey()
-	return &e
-}
-
-func (e XAIExecutor) ForAPIKey() cliproxyauth.ProviderExecutor {
 	e.cfg = e.cfg.ForAPIKey()
 	return &e
 }
@@ -31,29 +21,12 @@ func (e CodexWebsocketsExecutor) ForAPIKey() cliproxyauth.ProviderExecutor {
 	return &e
 }
 
-func (e XAIWebsocketsExecutor) ForAPIKey() cliproxyauth.ProviderExecutor {
-	if e.XAIExecutor != nil {
-		e.XAIExecutor = e.XAIExecutor.ForAPIKey().(*XAIExecutor)
-	}
-	return &e
-}
-
 func (e CodexAutoExecutor) ForAPIKey() cliproxyauth.ProviderExecutor {
 	if e.httpExec != nil {
 		e.httpExec = e.httpExec.ForAPIKey().(*CodexExecutor)
 	}
 	if e.wsExec != nil {
 		e.wsExec = e.wsExec.ForAPIKey().(*CodexWebsocketsExecutor)
-	}
-	return &e
-}
-
-func (e XAIAutoExecutor) ForAPIKey() cliproxyauth.ProviderExecutor {
-	if e.httpExec != nil {
-		e.httpExec = e.httpExec.ForAPIKey().(*XAIExecutor)
-	}
-	if e.wsExec != nil {
-		e.wsExec = e.wsExec.ForAPIKey().(*XAIWebsocketsExecutor)
 	}
 	return &e
 }

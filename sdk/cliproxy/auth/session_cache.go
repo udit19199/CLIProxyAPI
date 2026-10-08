@@ -240,12 +240,6 @@ func compactSessionAliases(aliases []string) []string {
 	return compactSessionAliasesWith(aliases, isLocalPromptCacheSessionAlias)
 }
 
-func compactHomeSessionAliases(aliases []string) []string {
-	return compactSessionAliasesWith(aliases, func(alias string) bool {
-		return strings.HasPrefix(alias, "pck:")
-	})
-}
-
 func compactSessionAliasesWith(aliases []string, isPromptCacheAlias func(string) bool) []string {
 	compacted := make([]string, 0, len(aliases))
 	hasPromptCacheKey := false

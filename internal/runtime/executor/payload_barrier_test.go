@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
@@ -89,45 +87,6 @@ func TestPayloadBarrierCodexImageFilter(t *testing.T) {
 					}
 				})
 			}
-		}
-	}
-}
-
-func TestPayloadBarrierXAIWebsocketRetry(t *testing.T) {
-	cfg := &config.Config{Payload: config.PayloadConfig{
-		Override: []config.PayloadRule{{Models: []config.PayloadModelRule{{Name: "*"}}, Params: map[string]any{"store": false, "instructions": "configured"}}},
-		Filter:   []config.PayloadFilterRule{{Models: []config.PayloadModelRule{{Name: "*"}}, Params: []string{"input.0", "previous_response_id"}}},
-	}}
-	req := cliproxyexecutor.Request{Model: "grok-4.3"}
-	body := []byte(`{"previous_response_id":"previous","input":[{"content":"first"},{"content":"second"}]}`)
-	finalize := helps.NewPayloadFinalizer(cfg, "xai", req.Model, "codex", "", body, req, cliproxyexecutor.Options{})
-	first := buildXAIWebsocketRequestBody(body, finalize)
-	retry := buildXAIWebsocketRequestBody(body, finalize)
-	if !bytes.Equal(first, retry) {
-		t.Fatalf("retry changed configured body: %s != %s", first, retry)
-	}
-	if gjson.GetBytes(first, "store").Bool() || gjson.GetBytes(first, "instructions").String() != "configured" || gjson.GetBytes(first, "previous_response_id").Exists() || gjson.GetBytes(first, "input.#").Int() != 1 {
-		t.Fatalf("invalid final payload: %s", first)
-	}
-	if gjson.GetBytes(first, "type").String() != "response.create" {
-		t.Fatalf("missing frame type: %s", first)
-	}
-}
-
-func TestPayloadBarrierClaudeDoesNotReplayFiltersOrReinjectIdentity(t *testing.T) {
-	cfg := &config.Config{Payload: config.PayloadConfig{
-		Filter:   []config.PayloadFilterRule{{Models: []config.PayloadModelRule{{Name: "*"}}, Params: []string{"system", "metadata", "diagnostics", "context_management", "messages.0"}}},
-		Override: []config.PayloadRule{{Models: []config.PayloadModelRule{{Name: "*"}}, Params: map[string]any{"max_tokens": 1}}},
-	}}
-	for _, stream := range []bool{false, true} {
-		body := executeClaudeContextManagementRequest(t, cfg, []byte(`{"model":"claude-opus-5","thinking":{"type":"adaptive"},"messages":[{"role":"user","content":"first"},{"role":"assistant","content":"second"},{"role":"user","content":"third"}]}`), stream)
-		for _, path := range []string{"system", "metadata", "diagnostics", "context_management"} {
-			if gjson.GetBytes(body, path).Exists() {
-				t.Fatalf("%s was reinjected: %s", path, body)
-			}
-		}
-		if gjson.GetBytes(body, "messages.#").Int() != 2 || gjson.GetBytes(body, "max_tokens").Int() != 1 {
-			t.Fatalf("built-in processing changed final rule semantics: %s", body)
 		}
 	}
 }

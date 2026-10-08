@@ -1341,50 +1341,12 @@ func (m *Manager) shouldRetryAfterErrorWithAttempted(ctx context.Context, opts c
 	if err == nil {
 		return 0, false
 	}
-	var homeBusy *HomeConcurrencyBusyError
-	if errors.As(err, &homeBusy) && homeBusy != nil {
-		return 0, false
-	}
 	status := statusCodeFromError(err)
 	if status == http.StatusOK {
 		return 0, false
 	}
 	if isRequestInvalidError(err) || isRequestStopError(err) {
 		return 0, false
-	}
-	if m.HomeEnabled() {
-		var cooldownErr *homeDispatchRetryAfterError
-		if errors.As(err, &cooldownErr) && cooldownErr != nil {
-			observeHomeCooldownRetryLimit(cooldownErr, &homeRetryLimit, pinnedAuthIDFromMetadata(opts.Metadata) == "")
-		}
-	}
-	var exhausted *homeRetryRoundExhaustedError
-	if m.HomeEnabled() && errors.As(err, &exhausted) && exhausted != nil {
-		if !isRequestRetryRoundError(err) || !m.homeRetryAllowed(attempt, homeRetryLimit) {
-			return 0, false
-		}
-		if exhausted.retryNow {
-			return 0, true
-		}
-		if retryAfter := retryAfterFromError(err); retryAfter != nil {
-			if *retryAfter < 0 || (*retryAfter > 0 && (maxWait <= 0 || *retryAfter > maxWait)) {
-				return 0, false
-			}
-			return *retryAfter, true
-		}
-		// Home will provide a cooldown error on the next round if all
-		// credentials are still cooling down; otherwise retry immediately.
-		return 0, true
-	}
-	if m.HomeEnabled() {
-		if status != http.StatusTooManyRequests || !m.homeRetryAllowed(attempt, homeRetryLimit) {
-			return 0, false
-		}
-		retryAfter := retryAfterFromError(err)
-		if retryAfter == nil || *retryAfter <= 0 || (maxWait <= 0 || *retryAfter > maxWait) {
-			return 0, false
-		}
-		return *retryAfter, true
 	}
 	eligibility := authSelectionEligibilityForRequest(ctx, opts)
 	pinnedAuthID := pinnedAuthIDFromMetadata(opts.Metadata)
@@ -1405,51 +1367,6 @@ func (m *Manager) shouldRetryAfterErrorWithAttempted(ctx context.Context, opts c
 		return *retryAfter, true
 	}
 	return 0, true
-}
-
-func (m *Manager) homeRetryAllowed(attempt int, retryLimit int) bool {
-	if m == nil || !m.HomeEnabled() || attempt < 0 {
-		return false
-	}
-	if retryLimit < 0 {
-		retryLimit = int(m.requestRetry.Load())
-		if retryLimit < 0 {
-			retryLimit = 0
-		}
-	}
-	return attempt < retryLimit
-}
-
-func (m *Manager) observeHomeRetryLimit(auth *Auth, selection *HomeDispatchSelection, retryLimit *int) {
-	if m == nil || retryLimit == nil {
-		return
-	}
-	if selection != nil && selection.hasRequestRetry {
-		*retryLimit = selection.requestRetry
-		return
-	}
-	if auth == nil {
-		return
-	}
-	limit := int(m.requestRetry.Load())
-	if override, ok := auth.RequestRetryOverride(); ok {
-		limit = override
-	}
-	if limit < 0 {
-		limit = 0
-	}
-	if *retryLimit < 0 || limit > *retryLimit {
-		*retryLimit = limit
-	}
-}
-
-func observeHomeCooldownRetryLimit(cooldown *homeDispatchRetryAfterError, retryLimit *int, acceptRemoteRetryLimit bool) {
-	if cooldown == nil || retryLimit == nil || !acceptRemoteRetryLimit {
-		return
-	}
-	if remoteLimit, ok := cooldown.RequestRetryLimit(); ok {
-		*retryLimit = remoteLimit
-	}
 }
 
 func isCredentialRetryRoundStatus(status int) bool {
@@ -1541,19 +1458,7 @@ func (m *Manager) GetByID(id string) (*Auth, bool) {
 
 // GetExecutionSessionAuthByID retrieves a Home runtime auth scoped to an execution session.
 func (m *Manager) GetExecutionSessionAuthByID(sessionID string, authID string) (*Auth, bool) {
-	sessionID = strings.TrimSpace(sessionID)
-	authID = strings.TrimSpace(authID)
-	if m == nil || sessionID == "" || authID == "" {
-		return nil, false
-	}
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	sessionAuths := m.homeRuntimeAuths[sessionID]
-	auth := sessionAuths[authID]
-	if auth == nil {
-		return nil, false
-	}
-	return auth.Clone(), true
+	return nil, false
 }
 
 func canonicalSchedulingProvider(key string) string {
@@ -1610,26 +1515,13 @@ func (m *Manager) CloseExecutionSession(sessionID string) {
 		return
 	}
 
-	m.mu.Lock()
-	var selections []*HomeDispatchSelection
-	if sessionID == CloseAllExecutionSessionsID {
-		m.clearHomeRuntimeAuthsLocked()
-		selections = m.takeAllHomeSessionSelectionsLocked()
-		m.clearHomeSessionLocks()
-	} else {
-		m.clearHomeRuntimeAuthsForSessionLocked(sessionID)
-		selections = m.takeHomeSessionSelectionsLocked(sessionID)
-		m.homeSessionLocks.Delete(sessionID)
-	}
+	m.mu.RLock()
 	executors := make([]ProviderExecutor, 0, len(m.executors))
 	for _, exec := range m.executors {
 		executors = append(executors, exec)
 	}
-	m.mu.Unlock()
+	m.mu.RUnlock()
 
-	for _, selection := range selections {
-		selection.End("session_closed")
-	}
 	for i := range executors {
 		if closer, ok := executors[i].(ExecutionSessionCloser); ok && closer != nil {
 			closer.CloseExecutionSession(sessionID)
@@ -1723,11 +1615,6 @@ func (m *Manager) routeAwareSelectionRequired(auth *Auth, routeModel string) boo
 }
 
 func (m *Manager) pickNextLegacy(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, tried map[string]struct{}) (*Auth, ProviderExecutor, error) {
-	if m.HomeEnabled() {
-		auth, exec, _, err := m.pickNextViaHome(ctx, model, opts, tried)
-		return auth, exec, err
-	}
-
 	opts.EnsureMetadata()
 	opts.Metadata[cliproxyexecutor.SessionAffinityProviderMetadataKey] = provider
 
@@ -1876,116 +1763,11 @@ func (m *Manager) SelectAuthWithCredentialPolicy(ctx context.Context, provider, 
 	if selected == nil || !credentialPolicyAllows(policy, selected) {
 		return nil, &Error{Code: "auth_not_found", Message: "selector returned no eligible auth"}
 	}
-	if m.HomeEnabled() {
-		return nil, &Error{Code: "home_unavailable", Message: "legacy auth selection is unavailable while Home is enabled", HTTPStatus: http.StatusServiceUnavailable}
-	}
 	return selected, nil
-}
-
-// SelectHomeAuthWithCredentialPolicy selects a policy-constrained Home dispatch while retaining its execution scope.
-func (m *Manager) SelectHomeAuthWithCredentialPolicy(ctx context.Context, provider, model, policy string, opts cliproxyexecutor.Options) (*HomeDispatchSelection, error) {
-	policy = normalizeCredentialPolicy(policy)
-	if policy == "" {
-		return nil, &Error{Code: "invalid_credential_policy", Message: "credential policy is invalid", HTTPStatus: http.StatusBadRequest}
-	}
-	if m == nil || !m.HomeEnabled() {
-		return nil, &Error{Code: "home_unavailable", Message: "home control center unavailable", HTTPStatus: http.StatusServiceUnavailable}
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	selectionCtx := withCredentialPolicy(ctx, policy)
-	homeAuthCount := homeAuthCountFromMetadata(opts.Metadata)
-	tried := make(map[string]struct{})
-	for {
-		selectionOpts := withHomeAuthCount(opts, homeAuthCount)
-		selectionOpts = withHomeExcludedAuthIDs(selectionOpts, tried)
-		selection, errSelection := m.pickHomeDispatchSelection(selectionCtx, model, selectionOpts)
-		if errSelection != nil {
-			return nil, errSelection
-		}
-		providerMatches := strings.TrimSpace(provider) == "" || strings.EqualFold(strings.TrimSpace(selection.Provider), strings.TrimSpace(provider))
-		policyMatches := credentialPolicyAllows(policy, selection.Auth)
-		if providerMatches && policyMatches {
-			return selection, nil
-		}
-
-		authID := ""
-		if selection.Auth != nil {
-			authID = strings.TrimSpace(selection.Auth.ID)
-		}
-		reason := "credential_policy_mismatch"
-		if !providerMatches {
-			reason = "provider_mismatch"
-		}
-		if errEnd := m.endHomeSelectionBeforeRedispatch(selectionCtx, selection, reason); errEnd != nil {
-			return nil, errEnd
-		}
-		if authID == "" {
-			return nil, &Error{Code: "auth_not_found", Message: "selected auth has no ID"}
-		}
-		if _, alreadyTried := tried[authID]; alreadyTried {
-			return nil, &Error{Code: "auth_not_found", Message: "selector repeatedly returned an ineligible auth"}
-		}
-		tried[authID] = struct{}{}
-		homeAuthCount++
-	}
-}
-
-// SelectHomeAuthByKind selects a Home dispatch while retaining its execution scope.
-func (m *Manager) SelectHomeAuthByKind(ctx context.Context, provider string, model string, requiredKind string, opts cliproxyexecutor.Options) (*HomeDispatchSelection, error) {
-	requiredKind = normalizeAuthKind(requiredKind)
-	if requiredKind == "" {
-		return nil, &Error{Code: "invalid_auth_kind", Message: "required auth kind is invalid", HTTPStatus: http.StatusBadRequest}
-	}
-	if m == nil || !m.HomeEnabled() {
-		return nil, &Error{Code: "home_unavailable", Message: "home control center unavailable", HTTPStatus: http.StatusServiceUnavailable}
-	}
-
-	homeAuthCount := homeAuthCountFromMetadata(opts.Metadata)
-	tried := make(map[string]struct{})
-	for {
-		selectionOpts := withHomeAuthCount(opts, homeAuthCount)
-		selectionOpts = withHomeExcludedAuthIDs(selectionOpts, tried)
-		selection, errSelection := m.pickHomeDispatchSelection(ctx, model, selectionOpts)
-		if errSelection != nil {
-			return nil, errSelection
-		}
-		providerMatches := strings.TrimSpace(provider) == "" || strings.EqualFold(strings.TrimSpace(selection.Provider), strings.TrimSpace(provider))
-		selectionAuth := selection.CloneAuth()
-		kindMatches := selectionAuth != nil && selectionAuth.AuthKind() == requiredKind
-		if providerMatches && kindMatches {
-			return selection, nil
-		}
-
-		authID := ""
-		if selectionAuth != nil {
-			authID = strings.TrimSpace(selectionAuth.ID)
-		}
-		reason := "auth_kind_mismatch"
-		if !providerMatches {
-			reason = "provider_mismatch"
-		}
-		if errEnd := m.endHomeSelectionBeforeRedispatch(ctx, selection, reason); errEnd != nil {
-			return nil, errEnd
-		}
-		if authID == "" {
-			return nil, &Error{Code: "auth_not_found", Message: "selected auth has no ID"}
-		}
-		if _, alreadyTried := tried[authID]; alreadyTried {
-			return nil, &Error{Code: "auth_not_found", Message: "selector repeatedly returned an ineligible auth"}
-		}
-		tried[authID] = struct{}{}
-		homeAuthCount++
-	}
 }
 
 func (m *Manager) pickNext(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, tried map[string]struct{}) (*Auth, ProviderExecutor, error) {
 	opts.EnsureMetadata()
-	if m.HomeEnabled() {
-		auth, exec, _, err := m.pickNextViaHome(ctx, model, opts, tried)
-		return auth, exec, err
-	}
 	opts.Metadata[cliproxyexecutor.SessionAffinityProviderMetadataKey] = provider
 	opts.Metadata[cliproxyexecutor.SessionAffinityModelMetadataKey] = model
 
@@ -2042,10 +1824,6 @@ func (m *Manager) pickNext(ctx context.Context, provider, model string, opts cli
 }
 
 func (m *Manager) pickNextMixedLegacy(ctx context.Context, providers []string, model string, opts cliproxyexecutor.Options, tried map[string]struct{}) (*Auth, ProviderExecutor, string, error) {
-	if m.HomeEnabled() {
-		return m.pickNextViaHome(ctx, model, opts, tried)
-	}
-
 	opts.EnsureMetadata()
 	opts.Metadata[cliproxyexecutor.SessionAffinityProviderMetadataKey] = "mixed"
 
@@ -2156,9 +1934,6 @@ func (m *Manager) pickNextMixedLegacy(ctx context.Context, providers []string, m
 
 func (m *Manager) pickNextMixed(ctx context.Context, providers []string, model string, opts cliproxyexecutor.Options, tried map[string]struct{}) (*Auth, ProviderExecutor, string, error) {
 	opts.EnsureMetadata()
-	if m.HomeEnabled() {
-		return m.pickNextViaHome(ctx, model, opts, tried)
-	}
 	opts.Metadata[cliproxyexecutor.SessionAffinityProviderMetadataKey] = "mixed"
 	opts.Metadata[cliproxyexecutor.SessionAffinityModelMetadataKey] = model
 

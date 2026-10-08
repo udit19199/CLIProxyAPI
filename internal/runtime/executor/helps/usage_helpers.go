@@ -134,7 +134,7 @@ func NewUsageReporter(ctx context.Context, provider, model string, auth *cliprox
 	if auth != nil {
 		reporter.authID = auth.ID
 		reporter.authIndex = auth.EnsureIndex()
-		reporter.accessTokenHash = authAccessTokenSHA256(auth)
+		reporter.accessTokenHash = cliproxyauth.AccessTokenSHA256(auth)
 	}
 	return reporter
 }
@@ -184,7 +184,7 @@ func (r *UsageReporter) UpdateAccessTokenFingerprint(auth *cliproxyauth.Auth) {
 		return
 	}
 	r.authMu.Lock()
-	r.accessTokenHash = authAccessTokenSHA256(auth)
+	r.accessTokenHash = cliproxyauth.AccessTokenSHA256(auth)
 	r.authMu.Unlock()
 }
 

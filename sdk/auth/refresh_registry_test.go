@@ -13,8 +13,6 @@ func TestProviderRefreshLeads(t *testing.T) {
 		wantNil       bool
 	}{
 		{name: "codex", authenticator: NewCodexAuthenticator(), want: 24 * time.Hour},
-		{name: "claude", authenticator: NewClaudeAuthenticator(), want: 4 * time.Hour},
-		{name: "xai", authenticator: NewXAIAuthenticator(), want: 5 * time.Minute},
 	}
 
 	for _, test := range tests {

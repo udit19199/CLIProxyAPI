@@ -7,19 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	managementHandlers "github.com/router-for-me/CLIProxyAPI/v8/internal/api/handlers/management"
-	claudemodels "github.com/router-for-me/CLIProxyAPI/v8/internal/client/claude/models"
-	codexmodels "github.com/router-for-me/CLIProxyAPI/v8/internal/client/codex/models"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/client/grokbuild"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/home"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
@@ -307,13 +300,6 @@ func rewriteCodexAlphaSearchModel(body []byte, upstreamModel string) []byte {
 	return rewrittenBody
 }
 
-func homeSelectionAttemptContext(ctx context.Context, selection *auth.HomeDispatchSelection) (context.Context, func(), error) {
-	if selection == nil {
-		return nil, func() {}, errors.New("Home dispatch selection is nil")
-	}
-	return selection.AttemptContext(ctx)
-}
-
 // codexAlphaSearch forwards the standalone search endpoint used by current
 // Codex clients. Unlike /responses, this payload is already in Codex search
 // format and must not pass through a protocol translator.
@@ -349,16 +335,7 @@ func (s *Server) codexAlphaSearch(c *gin.Context) {
 		return
 	}
 	selectionOpts := coreexecutor.Options{Headers: selectionHeaders, OriginalRequest: body}
-	var selection *auth.HomeDispatchSelection
-	var selected *auth.Auth
-	if s.handlers.AuthManager.HomeEnabled() {
-		selection, err = s.handlers.AuthManager.SelectHomeAuthWithCredentialPolicy(ctx, "codex", selectionModel, auth.CredentialPolicyCodexAlphaSearchV1, selectionOpts)
-		if selection != nil {
-			selected = selection.CloneAuth()
-		}
-	} else {
-		selected, err = s.handlers.AuthManager.SelectAuthWithCredentialPolicy(ctx, "codex", selectionModel, auth.CredentialPolicyCodexAlphaSearchV1, selectionOpts)
-	}
+	selected, err := s.handlers.AuthManager.SelectAuthWithCredentialPolicy(ctx, "codex", selectionModel, auth.CredentialPolicyCodexAlphaSearchV1, selectionOpts)
 	if err != nil {
 		status := clienterror.HTTPStatusFromErrorOr(err, http.StatusServiceUnavailable)
 		for _, value := range auth.SafeResponseHeaders(err).Values("Retry-After") {
@@ -368,36 +345,8 @@ func (s *Server) codexAlphaSearch(c *gin.Context) {
 		return
 	}
 	if selected == nil {
-		if selection != nil {
-			selection.End("missing_auth")
-		}
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Codex auth unavailable"})
 		return
-	}
-	if selection != nil && selection.CanonicalSessionID != "" {
-		meta := logging.GetClientRequestMetadata(ctx)
-		meta.SessionID = selection.CanonicalSessionID
-		if selection.ParentSessionID != "" {
-			meta.ParentSessionID = selection.ParentSessionID
-		} else {
-			meta.ParentSessionID = ""
-		}
-		if meta.SessionID == meta.ParentSessionID {
-			meta.ParentSessionID = ""
-		}
-		ctx = logging.WithClientRequestMetadata(ctx, meta)
-	}
-	var releaseAttempt func()
-	if selection != nil {
-		attemptCtx, release, errBind := homeSelectionAttemptContext(ctx, selection)
-		if errBind != nil {
-			selection.End("attempt_bind_failed")
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": errBind.Error()})
-			return
-		}
-		ctx = attemptCtx
-		releaseAttempt = release
-		defer releaseAttempt()
 	}
 	logging.SetGinCPATraceID(c, selected.EnsureIndex())
 
@@ -458,23 +407,14 @@ func (s *Server) codexAlphaSearch(c *gin.Context) {
 	}
 
 	if errCtx := ctx.Err(); errCtx != nil {
-		if selection != nil {
-			selection.End("attempt_canceled")
-		}
 		c.JSON(clienterror.HTTPStatusFromErrorOr(errCtx, http.StatusRequestTimeout), gin.H{"error": errCtx.Error()})
 		return
 	}
 	resp, err := performRequest(selected)
 	if err != nil {
 		if errors.Is(err, errMissingBaseURL) {
-			if selection != nil {
-				selection.End("missing_base_url")
-			}
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 			return
-		}
-		if selection != nil {
-			selection.End("request_failed")
 		}
 		helps.RecordAPIResponseError(ctx, s.cfg, err)
 		c.JSON(clienterror.HTTPStatusFromErrorOr(err, http.StatusBadGateway), gin.H{"error": err.Error()})
@@ -487,33 +427,17 @@ func (s *Server) codexAlphaSearch(c *gin.Context) {
 		}
 		return errClose
 	}
-	if selection != nil {
-		if errBind := selection.Bind(closeResponseBody); errBind != nil {
-			if resp.StatusCode == http.StatusUnauthorized {
-				s.handlers.AuthManager.ReportHomeUnauthorized(ctx, selected, "codex", selectionModel)
-			}
-			selection.End("response_bind_failed")
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": errBind.Error()})
-			return
-		}
-		defer selection.End("response_closed")
-	} else {
-		defer func() { _ = closeResponseBody() }()
-	}
+	defer func() { _ = closeResponseBody() }()
 	helps.RecordAPIResponseMetadata(ctx, s.cfg, resp.StatusCode, resp.Header.Clone())
 	upstreamBody, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
 		helps.AppendAPIResponseChunk(ctx, s.cfg, upstreamBody)
-		if selection != nil && resp.StatusCode == http.StatusUnauthorized {
-			s.handlers.AuthManager.ReportHomeUnauthorized(ctx, selected, "codex", selectionModel, upstreamBody)
-		}
 		helps.RecordAPIResponseError(ctx, s.cfg, err)
 		c.JSON(clienterror.HTTPStatusFromErrorOr(err, http.StatusBadGateway), gin.H{"error": "Failed to read Codex search response"})
 		return
 	}
 	helps.AppendAPIResponseChunk(ctx, s.cfg, upstreamBody)
-	if selection != nil && resp.StatusCode == http.StatusUnauthorized {
-		s.handlers.AuthManager.ReportHomeUnauthorized(ctx, selected, "codex", selectionModel, upstreamBody)
+	if resp.StatusCode == http.StatusUnauthorized {
 		log.WithField("status", resp.StatusCode).Warnf("codex alpha search upstream request failed: %s", logging.SafeDiagnosticForLog(string(upstreamBody)))
 	}
 	if contentType := resp.Header.Get("Content-Type"); contentType != "" {
@@ -582,17 +506,7 @@ func (s *Server) unifiedModelsHandler(openaiHandler *openai.OpenAIAPIHandler, cl
 		}
 
 		if _, ok := c.Request.URL.Query()["client_version"]; ok {
-			clientVersion := c.Query("client_version")
-			if s != nil && s.cfg != nil && s.cfg.Home.Enabled {
-				s.handleHomeCodexClientModels(c, clientVersion)
-				return
-			}
 			openaiHandler.OpenAIModels(c)
-			return
-		}
-
-		if s != nil && s.cfg != nil && s.cfg.Home.Enabled {
-			s.handleHomeModels(c)
 			return
 		}
 
@@ -603,18 +517,6 @@ func (s *Server) unifiedModelsHandler(openaiHandler *openai.OpenAIAPIHandler, cl
 			openaiHandler.OpenAIModels(c)
 		}
 	}
-}
-
-func grokModelsFromHomeEntries(entries []homeModelEntry) []grokbuild.ModelInfo {
-	models := make([]grokbuild.ModelInfo, 0, len(entries))
-	for _, entry := range entries {
-		models = append(models, grokbuild.ModelInfo{
-			ID:            entry.id,
-			DisplayName:   entry.displayName,
-			ContextLength: entry.contextLength,
-		})
-	}
-	return models
 }
 
 func grokModelsFromRegistryInfos(infos []*registry.ModelInfo) []grokbuild.ModelInfo {
@@ -637,16 +539,7 @@ func grokModelsFromRegistryInfos(infos []*registry.ModelInfo) []grokbuild.ModelI
 }
 
 func (s *Server) handleGrokModels(c *gin.Context) {
-	var models []grokbuild.ModelInfo
-	if s != nil && s.cfg != nil && s.cfg.Home.Enabled {
-		entries, ok := s.loadHomeModelEntries(c)
-		if !ok {
-			return
-		}
-		models = grokModelsFromHomeEntries(entries)
-	} else {
-		models = grokModelsFromRegistryInfos(registry.GetGlobalRegistry().GetAvailableModelInfos())
-	}
+	models := grokModelsFromRegistryInfos(registry.GetGlobalRegistry().GetAvailableModelInfos())
 	s.writeModelListResponse(c, "openai", grokbuild.BuildResponse(models))
 }
 
@@ -658,554 +551,14 @@ func (s *Server) writeModelListResponse(c *gin.Context, sourceFormat string, pay
 	c.JSON(http.StatusOK, payload)
 }
 
-// handleHomeCodexClientModels builds the Codex client catalog from Home model IDs.
-// Template metadata still comes from the local/remote codex_client_models catalog.
-func (s *Server) handleHomeCodexClientModels(c *gin.Context, clientVersion string) {
-	entries, ok := s.loadHomeModelEntries(c)
-	if !ok {
-		return
-	}
-
-	models := make([]map[string]any, 0, len(entries))
-	for _, entry := range entries {
-		models = append(models, formatHomeCodexModelWithSettings(entry, s.cfg))
-	}
-
-	var webSearchCapabilityForModel codexmodels.WebSearchCapabilityForModelFunc
-	if clientVersion == "cpa" {
-		webSearchCapabilityForModel = homeWebSearchCapabilityForModel(entries)
-	}
-	var manager *auth.Manager
-	if s.handlers != nil {
-		manager = s.handlers.AuthManager
-	}
-	var applyPatchCapabilityForModel codexmodels.ApplyPatchCapabilityForModelFunc
-	if s.cfg.Client.Codex.EnableApplyPatch {
-		applyPatchCapabilityForModel = homeApplyPatchCapabilityForModel(entries, manager)
-	}
-	payload := codexmodels.BuildResponseForClientWithToolCapabilities(models, nil, webSearchCapabilityForModel, applyPatchCapabilityForModel, s.cfg.Client.Codex.OptimizeMultiAgentV2, clientVersion)
-	body, errMarshal := codexmodels.MarshalCompact(payload)
-	if errMarshal != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": errMarshal.Error()})
-		return
-	}
-	s.writeModelListResponse(c, "openai", body)
-}
-
-// homeApplyPatchCapabilityForModel uses only Home's exact public routing evidence,
-// never the local model registry or the template's metadata model ID.
-func homeApplyPatchCapabilityForModel(entries []homeModelEntry, manager *auth.Manager) codexmodels.ApplyPatchCapabilityForModelFunc {
-	providersByID := make(map[string][]string, len(entries))
-	for _, entry := range entries {
-		id := strings.TrimSpace(entry.id)
-		providersByID[id] = append(providersByID[id], entry.providers...)
-		if len(entry.providers) == 0 {
-			providersByID[id] = append(providersByID[id], "")
-		}
-		// The decoder omits empty section names from providers, but an unknown
-		// route must still veto support when combined with a known section.
-		for _, route := range entry.nativeCapabilityRoutes {
-			if strings.TrimSpace(route.Provider) == "" {
-				providersByID[id] = append(providersByID[id], "")
-			}
-		}
-	}
-	return func(id string) bool {
-		return manager.SupportsApplyPatchForProviders(providersByID[strings.TrimSpace(id)])
-	}
-}
-
-func homeWebSearchCapabilityForModel(entries []homeModelEntry) codexmodels.WebSearchCapabilityForModelFunc {
-	routesByID := make(map[string][]registry.NativeCapabilityRoute, len(entries))
-	for _, entry := range entries {
-		routesByID[entry.id] = append([]registry.NativeCapabilityRoute(nil), entry.nativeCapabilityRoutes...)
-	}
-	return func(id string) *bool {
-		return registry.ResolveResponsesWebSearchCapability(routesByID[strings.TrimSpace(id)])
-	}
-}
-
-func formatHomeCodexModel(entry homeModelEntry) map[string]any {
-	model := map[string]any{
-		"id":     entry.id,
-		"object": "model",
-	}
-	if entry.created > 0 {
-		model["created"] = entry.created
-	}
-	if entry.ownedBy != "" {
-		model["owned_by"] = entry.ownedBy
-	}
-	for _, p := range entry.providers {
-		if strings.EqualFold(p, "devin") {
-			model["type"] = "devin"
-			break
-		}
-	}
-	if entry.displayName != "" {
-		model["display_name"] = entry.displayName
-		model["description"] = entry.displayName
-	}
-	if entry.contextLength > 0 {
-		model["context_length"] = entry.contextLength
-	}
-	if entry.maxContextLength > 0 {
-		model["max_context_length"] = entry.maxContextLength
-	}
-	if entry.maxCompletionTokens > 0 {
-		model["max_completion_tokens"] = entry.maxCompletionTokens
-	}
-	if entry.thinking != nil {
-		model["thinking"] = entry.thinking
-	}
-	return model
-}
-
-func formatHomeCodexModelWithSettings(entry homeModelEntry, cfg *config.Config) map[string]any {
-	model := formatHomeCodexModel(entry)
-	if cfg == nil || len(cfg.OAuthSettings) == 0 {
-		return model
-	}
-	providers := append([]string(nil), entry.providers...)
-	sort.SliceStable(providers, func(i, j int) bool {
-		if strings.EqualFold(providers[i], "codex") {
-			return true
-		}
-		if strings.EqualFold(providers[j], "codex") {
-			return false
-		}
-		return strings.ToLower(providers[i]) < strings.ToLower(providers[j])
-	})
-	for _, p := range providers {
-		channel := strings.ToLower(strings.TrimSpace(p))
-		if channelSettings, okChannel := cfg.OAuthSettings[channel]; okChannel {
-			if setting := config.ResolveOAuthModelSetting(channelSettings, entry.id, "", ""); setting != nil && setting.MaxContextLength > 0 {
-				model["max_context_length"] = setting.MaxContextLength
-				break
-			}
-		}
-	}
-	return model
-}
-
 func (s *Server) geminiModelsHandler(geminiHandler *gemini.GeminiAPIHandler) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if s != nil && s.cfg != nil && s.cfg.Home.Enabled {
-			s.handleHomeGeminiModels(c)
-			return
-		}
-
 		geminiHandler.GeminiModels(c)
 	}
 }
 
 func (s *Server) geminiGetHandler(geminiHandler *gemini.GeminiAPIHandler) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if s != nil && s.cfg != nil && s.cfg.Home.Enabled {
-			s.handleHomeGeminiModel(c)
-			return
-		}
-
 		geminiHandler.GeminiGetHandler(c)
 	}
-}
-
-type homeModelEntry struct {
-	id                     string
-	created                int64
-	ownedBy                string
-	displayName            string
-	contextLength          int
-	maxContextLength       int
-	maxCompletionTokens    int
-	thinking               *registry.ThinkingSupport
-	providers              []string
-	nativeCapabilityRoutes []registry.NativeCapabilityRoute
-}
-
-func (s *Server) handleHomeModels(c *gin.Context) {
-	entries, ok := s.loadHomeModelEntries(c)
-	if !ok {
-		return
-	}
-
-	isClaude := isAnthropicModelsRequest(c)
-
-	if isClaude {
-		disableCloaking := s.cfg != nil && s.cfg.ClaudeCode.DisableCloakingModelList
-		s.writeModelListResponse(c, "claude", claudemodels.BuildResponse(formatHomeClaudeModels(entries), disableCloaking))
-		return
-	}
-
-	filtered := make([]map[string]any, 0, len(entries))
-	for _, entry := range entries {
-		model := map[string]any{
-			"id":     entry.id,
-			"object": "model",
-		}
-		if entry.created > 0 {
-			model["created"] = entry.created
-		}
-		if entry.ownedBy != "" {
-			model["owned_by"] = entry.ownedBy
-		}
-		filtered = append(filtered, model)
-	}
-	s.writeModelListResponse(c, "openai", gin.H{
-		"object": "list",
-		"data":   filtered,
-	})
-}
-
-func formatHomeClaudeModels(entries []homeModelEntry) []map[string]any {
-	out := make([]map[string]any, 0, len(entries))
-	for _, entry := range entries {
-		out = append(out, formatHomeClaudeModel(entry))
-	}
-	return out
-}
-
-func formatHomeClaudeModel(entry homeModelEntry) map[string]any {
-	displayName := entry.displayName
-	if displayName == "" {
-		displayName = entry.id
-	}
-	maxInput := entry.contextLength
-	if maxInput <= 0 {
-		maxInput = registry.DefaultClaudeMaxInputTokens
-	}
-	maxOutput := entry.maxCompletionTokens
-	if maxOutput <= 0 {
-		maxOutput = registry.DefaultClaudeMaxOutputTokens
-	}
-	model := map[string]any{
-		"id":               entry.id,
-		"object":           "model",
-		"owned_by":         entry.ownedBy,
-		"type":             "model",
-		"display_name":     displayName,
-		"max_input_tokens": maxInput,
-		"max_tokens":       maxOutput,
-	}
-	if entry.created > 0 {
-		model["created_at"] = time.Unix(entry.created, 0).UTC().Format(time.RFC3339)
-	}
-	return model
-}
-
-func (s *Server) handleHomeGeminiModels(c *gin.Context) {
-	entries, ok := s.loadHomeModelEntries(c)
-	if !ok {
-		return
-	}
-
-	s.writeModelListResponse(c, "gemini", gin.H{
-		"models": formatHomeGeminiModels(entries),
-	})
-}
-
-func (s *Server) handleHomeGeminiModel(c *gin.Context) {
-	entries, ok := s.loadHomeModelEntries(c)
-	if !ok {
-		return
-	}
-
-	action := strings.TrimPrefix(c.Param("action"), "/")
-	action = strings.TrimSpace(action)
-	for _, entry := range entries {
-		if homeGeminiModelMatches(entry, action) {
-			c.JSON(http.StatusOK, formatHomeGeminiModel(entry))
-			return
-		}
-	}
-
-	c.JSON(http.StatusNotFound, handlers.ErrorResponse{
-		Error: handlers.ErrorDetail{
-			Message: "Not Found",
-			Type:    "not_found",
-		},
-	})
-}
-
-func (s *Server) loadHomeModelEntries(c *gin.Context) ([]homeModelEntry, bool) {
-	if s == nil || c == nil || c.Request == nil {
-		return nil, false
-	}
-	client := home.Current()
-	if client == nil {
-		c.JSON(http.StatusServiceUnavailable, handlers.ErrorResponse{
-			Error: handlers.ErrorDetail{
-				Message: "home control center unavailable",
-				Type:    "server_error",
-			},
-		})
-		return nil, false
-	}
-
-	raw, errGet := client.GetModels(c.Request.Context(), c.Request.Header, c.Request.URL.Query())
-	if errGet != nil {
-		c.JSON(http.StatusBadGateway, handlers.ErrorResponse{
-			Error: handlers.ErrorDetail{
-				Message: errGet.Error(),
-				Type:    "server_error",
-			},
-		})
-		return nil, false
-	}
-
-	if statusCode, ok := homeModelsAuthStatus(raw); ok {
-		c.JSON(statusCode, handlers.ErrorResponse{
-			Error: handlers.ErrorDetail{
-				Message: homeModelsErrorMessage(raw),
-				Type:    "authentication_error",
-			},
-		})
-		return nil, false
-	}
-
-	entries, errDecode := decodeHomeModels(raw)
-	if errDecode != nil {
-		c.JSON(http.StatusBadGateway, handlers.ErrorResponse{
-			Error: handlers.ErrorDetail{
-				Message: errDecode.Error(),
-				Type:    "server_error",
-			},
-		})
-		return nil, false
-	}
-
-	return entries, true
-}
-
-func formatHomeGeminiModels(entries []homeModelEntry) []map[string]any {
-	out := make([]map[string]any, 0, len(entries))
-	for _, entry := range entries {
-		out = append(out, formatHomeGeminiModel(entry))
-	}
-	return out
-}
-
-func formatHomeGeminiModel(entry homeModelEntry) map[string]any {
-	name := entry.id
-	if !strings.HasPrefix(name, "models/") {
-		name = "models/" + name
-	}
-	displayName := entry.displayName
-	if displayName == "" {
-		displayName = entry.id
-	}
-	return map[string]any{
-		"name":                       name,
-		"displayName":                displayName,
-		"description":                displayName,
-		"supportedGenerationMethods": []string{"generateContent"},
-	}
-}
-
-func homeGeminiModelMatches(entry homeModelEntry, action string) bool {
-	id := strings.TrimSpace(entry.id)
-	if id == "" || action == "" {
-		return false
-	}
-	normalizedAction := strings.TrimPrefix(action, "models/")
-	normalizedID := strings.TrimPrefix(id, "models/")
-	return action == id || action == "models/"+id || normalizedAction == normalizedID
-}
-
-// homeModelsAuthStatus inspects a home models response for an authentication/error envelope.
-// It returns the HTTP status code to surface (401 for credential issues, 502 otherwise)
-// and true when the payload is an error response rather than model data.
-func homeModelsAuthStatus(raw []byte) (int, bool) {
-	errType := homeModelsErrorType(raw)
-	if errType == "" {
-		return 0, false
-	}
-	if errType == "no_credentials" || errType == "invalid_credential" {
-		return http.StatusUnauthorized, true
-	}
-	return http.StatusBadGateway, true
-}
-
-func homeModelsErrorType(raw []byte) string {
-	top, ok := unmarshalHomeModelsTopLevel(raw)
-	if !ok {
-		return ""
-	}
-	rawErr, exists := top["error"]
-	if !exists {
-		return ""
-	}
-	var errObj struct {
-		Type string `json:"type"`
-	}
-	if errUnmarshal := json.Unmarshal(rawErr, &errObj); errUnmarshal != nil {
-		return ""
-	}
-	return strings.TrimSpace(errObj.Type)
-}
-
-func homeModelsErrorMessage(raw []byte) string {
-	top, ok := unmarshalHomeModelsTopLevel(raw)
-	if !ok {
-		return "home models request failed"
-	}
-	rawErr, exists := top["error"]
-	if !exists {
-		return "home models request failed"
-	}
-	var errObj struct {
-		Message string `json:"message"`
-	}
-	if errUnmarshal := json.Unmarshal(rawErr, &errObj); errUnmarshal != nil {
-		return "home models request failed"
-	}
-	if msg := strings.TrimSpace(errObj.Message); msg != "" {
-		return msg
-	}
-	return "home models request failed"
-}
-
-func unmarshalHomeModelsTopLevel(raw []byte) (map[string]json.RawMessage, bool) {
-	if len(raw) == 0 {
-		return nil, false
-	}
-	var top map[string]json.RawMessage
-	if errUnmarshal := json.Unmarshal(raw, &top); errUnmarshal != nil {
-		return nil, false
-	}
-	return top, true
-}
-
-func decodeHomeModels(raw []byte) ([]homeModelEntry, error) {
-	if len(raw) == 0 {
-		return nil, fmt.Errorf("home models payload is empty")
-	}
-
-	var bySection map[string][]map[string]any
-	if err := json.Unmarshal(raw, &bySection); err != nil {
-		return nil, fmt.Errorf("parse home models payload: %w", err)
-	}
-	if len(bySection) == 0 {
-		return nil, fmt.Errorf("home models payload has no sections")
-	}
-
-	indexByID := make(map[string]int)
-	out := make([]homeModelEntry, 0, 256)
-	for section, models := range bySection {
-		provider := strings.ToLower(strings.TrimSpace(section))
-		for _, model := range models {
-			id, _ := model["id"].(string)
-			id = strings.TrimSpace(id)
-			if id == "" {
-				name, _ := model["name"].(string)
-				name = strings.TrimSpace(name)
-				id = strings.TrimPrefix(name, "models/")
-			}
-			if id == "" {
-				continue
-			}
-			nativeCapabilities := homeModelNativeCapabilities(model)
-			route := registry.NativeCapabilityRoute{
-				Provider:           provider,
-				NativeCapabilities: nativeCapabilities,
-			}
-			if index, ok := indexByID[id]; ok {
-				out[index].providers = appendUniqueHomeProvider(out[index].providers, provider)
-				out[index].nativeCapabilityRoutes = append(out[index].nativeCapabilityRoutes, route)
-				continue
-			}
-
-			ownedBy, _ := model["owned_by"].(string)
-			ownedBy = strings.TrimSpace(ownedBy)
-			displayName, _ := model["display_name"].(string)
-			displayName = strings.TrimSpace(displayName)
-			if displayName == "" {
-				displayName, _ = model["displayName"].(string)
-				displayName = strings.TrimSpace(displayName)
-			}
-			thinking := homeModelThinkingSupport(model)
-
-			indexByID[id] = len(out)
-			out = append(out, homeModelEntry{
-				id:                     id,
-				created:                homeModelInt64Value(model, "created"),
-				ownedBy:                ownedBy,
-				displayName:            displayName,
-				contextLength:          int(homeModelInt64Value(model, "context_length", "contextLength", "inputTokenLimit", "max_input_tokens")),
-				maxContextLength:       int(homeModelInt64Value(model, "max_context_length", "maxContextLength")),
-				maxCompletionTokens:    int(homeModelInt64Value(model, "max_completion_tokens", "maxCompletionTokens", "outputTokenLimit", "max_tokens")),
-				thinking:               thinking,
-				providers:              appendUniqueHomeProvider(nil, provider),
-				nativeCapabilityRoutes: []registry.NativeCapabilityRoute{route},
-			})
-		}
-	}
-
-	sort.Slice(out, func(i, j int) bool { return out[i].id < out[j].id })
-	if len(out) == 0 {
-		return nil, fmt.Errorf("home models payload contains no models")
-	}
-	return out, nil
-}
-
-func homeModelNativeCapabilities(model map[string]any) *registry.NativeCapabilities {
-	raw, ok := model["native_capabilities"].(map[string]any)
-	if !ok {
-		return nil
-	}
-	webSearch, ok := raw["web_search"].(bool)
-	if !ok {
-		return &registry.NativeCapabilities{}
-	}
-	return &registry.NativeCapabilities{WebSearch: &webSearch}
-}
-
-func appendUniqueHomeProvider(providers []string, provider string) []string {
-	if provider == "" {
-		return providers
-	}
-	for _, existing := range providers {
-		if existing == provider {
-			return providers
-		}
-	}
-	return append(providers, provider)
-}
-
-func homeModelThinkingSupport(model map[string]any) *registry.ThinkingSupport {
-	raw, ok := model["thinking"]
-	if !ok || raw == nil {
-		return nil
-	}
-	data, errMarshal := json.Marshal(raw)
-	if errMarshal != nil {
-		return nil
-	}
-	var thinking registry.ThinkingSupport
-	if errUnmarshal := json.Unmarshal(data, &thinking); errUnmarshal != nil {
-		return nil
-	}
-	return &thinking
-}
-
-func homeModelInt64Value(model map[string]any, keys ...string) int64 {
-	for _, key := range keys {
-		switch value := model[key].(type) {
-		case float64:
-			return int64(value)
-		case int64:
-			return value
-		case int:
-			return int64(value)
-		case json.Number:
-			if n, errInt := value.Int64(); errInt == nil {
-				return n
-			}
-		case string:
-			if n, errParse := strconv.ParseInt(strings.TrimSpace(value), 10, 64); errParse == nil {
-				return n
-			}
-		}
-	}
-	return 0
 }

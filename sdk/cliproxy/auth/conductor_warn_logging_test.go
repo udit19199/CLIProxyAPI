@@ -112,43 +112,6 @@ func TestWarnLogUpstreamFailureUsesMarkedHomeDiagnostic(t *testing.T) {
 	t.Fatalf("expected upstream failure Warn log, got logs: %#v", hook.AllEntries())
 }
 
-func TestHomeCredentialBoundaryWarnLogUsesSafeDiagnostic(t *testing.T) {
-	diagnostic := "antigravity refresh: access token expired access_token=provider-secret\nforged log line"
-	upstreamErr := markedDiagnosticStatusError{
-		message:    "credential refresh temporarily unavailable",
-		diagnostic: diagnostic,
-		statusCode: http.StatusServiceUnavailable,
-	}
-	hook := setupTestLoggerHook(t)
-	auth := &Auth{ID: "auth-1", Provider: "antigravity"}
-	executor := &requestPrepareExecutor{prepareErr: upstreamErr}
-	selection := &HomeDispatchSelection{Auth: auth, Executor: executor, Provider: "antigravity"}
-	_, errPrepare := NewManager(nil, nil, nil).prepareHomeRequestAuth(context.Background(), executor, selection)
-	if errPrepare == nil || errPrepare.Error() != upstreamErr.message {
-		t.Fatalf("operation error = %v, want generic error %q", errPrepare, upstreamErr.message)
-	}
-
-	matches := 0
-	for _, entry := range hook.AllEntries() {
-		if entry.Level != log.WarnLevel || !strings.HasPrefix(entry.Message, "Home credential operation failed: err=") {
-			continue
-		}
-		matches++
-		if !strings.Contains(entry.Message, "access token expired") {
-			t.Fatalf("Warn log lost access-token-expired diagnostic: %q", entry.Message)
-		}
-		if strings.Contains(entry.Message, "provider-secret") || strings.ContainsAny(entry.Message, "\r\n") {
-			t.Fatalf("Warn log included unsafe provider detail: %q", entry.Message)
-		}
-		if entry.Data["operation"] != "request_auth_preparation" || entry.Data["provider"] != "antigravity" || entry.Data["status"] != http.StatusServiceUnavailable {
-			t.Fatalf("Warn log fields = %#v, want operation=request_auth_preparation provider=antigravity status=503", entry.Data)
-		}
-	}
-	if matches != 1 {
-		t.Fatalf("matching Warn logs = %d, want 1; logs=%#v", matches, hook.AllEntries())
-	}
-}
-
 func TestWarnLogOnAuthUnavailable_SingleProvider(t *testing.T) {
 	previousCooldown := quotaCooldownDisabled.Load()
 	quotaCooldownDisabled.Store(false)

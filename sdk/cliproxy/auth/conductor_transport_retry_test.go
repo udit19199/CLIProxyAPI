@@ -14,9 +14,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executionregistry"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
 
@@ -188,30 +186,6 @@ func TestExecuteDoesNotPoisonCredentialOnPreHTTPTransportFailure(t *testing.T) {
 	}
 	if string(resp.Payload) != "ok" {
 		t.Fatalf("second Execute() payload = %q, want %q", resp.Payload, "ok")
-	}
-	if calls := executor.callCount(); calls != 2 {
-		t.Fatalf("executor calls = %d, want 2", calls)
-	}
-}
-
-func TestHomeExecuteRetriesPreHTTPTransportFailure(t *testing.T) {
-	dispatcher := &retryContractHomeDispatcher{authIDs: []string{"home-retry-a"}}
-	executor := &transportThenSuccessExecutor{
-		identifier: "home-retry-contract",
-		fail:       windowsCodexTLSHandshakeError(),
-	}
-	manager := NewManager(nil, nil, nil)
-	manager.SetConfig(&internalconfig.Config{Home: internalconfig.HomeConfig{Enabled: true}})
-	manager.SetRetryConfig(1, 0, 0)
-	manager.PublishHomeDispatch(dispatcher, executionregistry.New(), 1)
-	manager.RegisterExecutor(executor)
-
-	resp, errExecute := manager.Execute(context.Background(), []string{"home-retry-contract"}, cliproxyexecutor.Request{Model: "gpt"}, cliproxyexecutor.Options{})
-	if errExecute != nil {
-		t.Fatalf("Execute() error = %v, want success after Home transport retry", errExecute)
-	}
-	if string(resp.Payload) != "ok" {
-		t.Fatalf("Execute() payload = %q, want %q", resp.Payload, "ok")
 	}
 	if calls := executor.callCount(); calls != 2 {
 		t.Fatalf("executor calls = %d, want 2", calls)

@@ -156,10 +156,6 @@ func (m *Manager) setConfigSnapshotLocked(cfg *internalconfig.Config) bool {
 	m.mu.RLock()
 	oldCooldownStore := m.cooldownStore
 	m.mu.RUnlock()
-	previousCfg, _ := m.runtimeConfig.Load().(*internalconfig.Config)
-	if homeSessionAliasTTL(previousCfg) != homeSessionAliasTTL(cfg) {
-		m.homeSessionAliases.clear()
-	}
 	m.runtimeConfig.Store(cfg)
 	clearedCooldowns := m.clearDisabledCooldownStates(cfg)
 	if clearedCooldowns && oldCooldownStore != nil {
@@ -168,9 +164,6 @@ func (m *Manager) setConfigSnapshotLocked(cfg *internalconfig.Config) bool {
 			m.pendingCooldownStateStore = oldCooldownStore
 		}
 		m.mu.Unlock()
-	}
-	if !cfg.Home.Enabled {
-		m.clearHomeRuntimeAuths()
 	}
 	m.rebuildAPIKeyModelAliasFromRuntimeConfig()
 	return clearedCooldowns

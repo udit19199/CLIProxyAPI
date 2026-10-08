@@ -10,9 +10,8 @@ import (
 func TestApplyPatchActualExecutors(t *testing.T) {
 	cfg := &config.Config{}
 	for _, exec := range []coreauth.ProviderExecutor{
-		NewOpenAICompatExecutor("arbitrary-plugin-provider", cfg), NewClaudeExecutor(cfg),
+		NewOpenAICompatExecutor("arbitrary-plugin-provider", cfg),
 		NewCodexExecutor(cfg), NewCodexWebsocketsExecutor(cfg), NewCodexAutoExecutor(cfg),
-		NewXAIExecutor(cfg), NewXAIWebsocketsExecutor(cfg), NewXAIAutoExecutor(cfg),
 	} {
 		support, okSupport := exec.(coreauth.ApplyPatchSupport)
 		if !okSupport || !support.SupportsApplyPatch() {
@@ -25,7 +24,7 @@ func TestApplyPatchActualExecutors(t *testing.T) {
 			}
 		}
 	}
-	for _, exec := range []coreauth.ApplyPatchSupport{&CodexAutoExecutor{}, &XAIAutoExecutor{}} {
+	for _, exec := range []coreauth.ApplyPatchSupport{&CodexAutoExecutor{}} {
 		if exec.SupportsApplyPatch() {
 			t.Errorf("unconfigured %T advertises support", exec)
 		}

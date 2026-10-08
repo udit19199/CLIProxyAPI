@@ -12,17 +12,16 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/claude"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 )
 
-func TestSaveTokenRecord_PostPersistHookReceivesCanonicalClaudeOAuth(t *testing.T) {
+func TestSaveTokenRecord_PostPersistHookReceivesCanonicalCodexOAuth(t *testing.T) {
 	authDir := t.TempDir()
-	fileName := "claude-user@example.com.json"
-	accessToken := "sk-ant-oat01-hot-reload"
+	fileName := "codex-user@example.com.json"
+	accessToken := "sk-codex-test-token"
 
 	h := NewHandler(&config.Config{AuthDir: authDir}, "", nil)
 	var persistedAuth *coreauth.Auth
@@ -31,7 +30,8 @@ func TestSaveTokenRecord_PostPersistHookReceivesCanonicalClaudeOAuth(t *testing.
 		return nil
 	})
 
-	tokenStorage := &claude.ClaudeTokenStorage{
+	tokenStorage := &codex.CodexTokenStorage{
+		Type:         "codex",
 		AccessToken:  accessToken,
 		RefreshToken: "refresh-token",
 		LastRefresh:  "2026-03-09T00:00:00Z",
@@ -40,7 +40,7 @@ func TestSaveTokenRecord_PostPersistHookReceivesCanonicalClaudeOAuth(t *testing.
 	}
 	record := &coreauth.Auth{
 		ID:       fileName,
-		Provider: "claude",
+		Provider: "codex",
 		FileName: fileName,
 		Storage:  tokenStorage,
 		Metadata: map[string]any{"email": tokenStorage.Email},
@@ -170,87 +170,6 @@ func TestSaveTokenRecord_PreservesExistingAuthFileSettings(t *testing.T) {
 	}
 	if saved["priority"] != float64(2) {
 		t.Errorf("priority = %v, want 2", saved["priority"])
-	}
-}
-
-func TestSaveTokenRecord_MigratesMatchingLegacyClaudeCredential(t *testing.T) {
-	authDir := t.TempDir()
-	legacyFileName := "claude-user@example.com.json"
-	targetFileName := claude.CredentialFileName("user@example.com", "organization-a", "account-a")
-	legacyPath := filepath.Join(authDir, legacyFileName)
-	targetPath := filepath.Join(authDir, targetFileName)
-
-	existing := map[string]any{
-		"type":              "claude",
-		"email":             "user@example.com",
-		"organization_uuid": "organization-a",
-		"account_uuid":      "account-a",
-		"access_token":      "old-token",
-		"refresh_token":     "old-refresh",
-		"prefix":            "team",
-		"proxy_url":         "http://127.0.0.1:8080",
-		"disabled":          true,
-		"weight":            float64(5),
-	}
-	raw, errMarshal := json.Marshal(existing)
-	if errMarshal != nil {
-		t.Fatalf("marshal legacy credential: %v", errMarshal)
-	}
-	if errWrite := os.WriteFile(legacyPath, raw, 0o600); errWrite != nil {
-		t.Fatalf("write legacy credential: %v", errWrite)
-	}
-
-	tokenStorage := &claude.ClaudeTokenStorage{
-		AccessToken:      "new-token",
-		RefreshToken:     "new-refresh",
-		Email:            "user@example.com",
-		OrganizationUUID: "organization-a",
-		AccountUUID:      "account-a",
-		Expire:           "2026-12-31T23:59:59Z",
-	}
-	record := &coreauth.Auth{
-		ID:       targetFileName,
-		Provider: "claude",
-		FileName: targetFileName,
-		Storage:  tokenStorage,
-		Metadata: map[string]any{
-			"email":             tokenStorage.Email,
-			"organization_uuid": tokenStorage.OrganizationUUID,
-			"account_uuid":      tokenStorage.AccountUUID,
-		},
-	}
-
-	h := NewHandler(&config.Config{AuthDir: authDir}, "", nil)
-	savedPath, errSave := h.saveTokenRecord(context.Background(), record)
-	if errSave != nil {
-		t.Fatalf("saveTokenRecord error: %v", errSave)
-	}
-	if savedPath != targetPath {
-		t.Fatalf("savedPath = %s, want %s", savedPath, targetPath)
-	}
-	if _, errStat := os.Stat(legacyPath); !os.IsNotExist(errStat) {
-		t.Fatalf("legacy credential still exists or stat failed: %v", errStat)
-	}
-
-	savedRaw, errRead := os.ReadFile(targetPath)
-	if errRead != nil {
-		t.Fatalf("read migrated credential: %v", errRead)
-	}
-	var saved map[string]any
-	if errUnmarshal := json.Unmarshal(savedRaw, &saved); errUnmarshal != nil {
-		t.Fatalf("unmarshal migrated credential: %v", errUnmarshal)
-	}
-	for key, want := range map[string]any{
-		"access_token":  "new-token",
-		"refresh_token": "new-refresh",
-		"prefix":        "team",
-		"proxy_url":     "http://127.0.0.1:8080",
-		"disabled":      true,
-		"weight":        float64(5),
-	} {
-		if got := saved[key]; got != want {
-			t.Errorf("%s = %#v, want %#v", key, got, want)
-		}
 	}
 }
 

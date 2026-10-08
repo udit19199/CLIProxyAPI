@@ -41,30 +41,6 @@ func (c *multiProviderUsageCapture) await(t *testing.T) coreusage.Record {
 	}
 }
 
-func TestClaudeUsageRecordCarriesResponseModel(t *testing.T) {
-	const alias = "claude-response-model-test"
-	capture := &multiProviderUsageCapture{alias: alias, records: make(chan coreusage.Record, 4)}
-	coreusage.RegisterNamedPlugin(t.Name(), capture)
-	t.Cleanup(func() {
-		coreusage.RegisterNamedPlugin(t.Name(), multiProviderNoopUsagePlugin{})
-	})
-
-	ctx := coreusage.WithRequestedModelAlias(context.Background(), alias)
-	auth := &cliproxyauth.Auth{ID: "claude-auth-1", Index: "auth-claude-1", Provider: "claude"}
-	reporter := helps.NewExecutorUsageReporter(ctx, NewClaudeExecutor(&config.Config{}), "claude-opus-5", auth)
-
-	reporter.ObserveResponseModel([]byte(`data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-5"}}`))
-	reporter.Publish(ctx, coreusage.Detail{InputTokens: 10, OutputTokens: 20})
-
-	record := capture.await(t)
-	if record.Model != "claude-opus-5" {
-		t.Fatalf("record model = %q, want claude-opus-5", record.Model)
-	}
-	if record.ResponseModel != "claude-sonnet-5" {
-		t.Fatalf("record response model = %q, want claude-sonnet-5", record.ResponseModel)
-	}
-}
-
 func TestOpenAICompatUsageRecordCarriesResponseModel(t *testing.T) {
 	const alias = "openai-response-model-test"
 	capture := &multiProviderUsageCapture{alias: alias, records: make(chan coreusage.Record, 4)}

@@ -2,23 +2,19 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/interfaces"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executionregistry"
 	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdkconfig "github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
@@ -639,110 +635,6 @@ func TestExecuteStreamWithAuthManager_EmptyClosedStream(t *testing.T) {
 	}
 	if streamErr == nil || streamErr.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("empty stream error = %+v, want terminal internal-server error", streamErr)
-	}
-}
-
-type handlerReleaseNotification struct {
-	group    executionregistry.ReleaseGroup
-	sequence int64
-}
-
-type handlerReleaseSink struct {
-	mu            sync.Mutex
-	notifications []handlerReleaseNotification
-	notified      chan struct{}
-}
-
-func newHandlerReleaseSink() *handlerReleaseSink {
-	return &handlerReleaseSink{notified: make(chan struct{}, 1)}
-}
-
-func (s *handlerReleaseSink) MarkDirty(group executionregistry.ReleaseGroup, sequence int64) {
-	s.mu.Lock()
-	s.notifications = append(s.notifications, handlerReleaseNotification{group: group, sequence: sequence})
-	s.mu.Unlock()
-	select {
-	case s.notified <- struct{}{}:
-	default:
-	}
-}
-
-func (s *handlerReleaseSink) Notifications() []handlerReleaseNotification {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return append([]handlerReleaseNotification(nil), s.notifications...)
-}
-
-type handlerAccountedHomeDispatcher struct {
-	calls atomic.Int32
-}
-
-func (*handlerAccountedHomeDispatcher) HeartbeatOK() bool { return true }
-func (d *handlerAccountedHomeDispatcher) RPopAuth(_ context.Context, model string, _ string, _ http.Header, _ int) ([]byte, error) {
-	d.calls.Add(1)
-	return json.Marshal(map[string]any{
-		"concurrency": map[string]any{"accounted": true, "credential_id": "handler-cred", "model": model},
-		"model":       model,
-		"auth_index":  "handler-cred",
-		"auth":        map[string]any{"id": "handler-cred", "provider": "bootstrap-test", "status": coreauth.StatusActive},
-	})
-}
-func (*handlerAccountedHomeDispatcher) AbortAmbiguousDispatch() {}
-
-func TestExecuteStreamWithAuthManager_HomeBootstrapFailureDoesNotRedispatch(t *testing.T) {
-	executor := &bootstrapStreamExecutor{stream: func(_ context.Context, _ int) (*coreexecutor.StreamResult, error) {
-		chunks := make(chan coreexecutor.StreamChunk, 2)
-		chunks <- coreexecutor.StreamChunk{Payload: []byte("drop")}
-		chunks <- coreexecutor.StreamChunk{Err: &coreauth.Error{HTTPStatus: http.StatusUnauthorized, Message: "unauthorized"}}
-		close(chunks)
-		return &coreexecutor.StreamResult{Chunks: chunks}, nil
-	}}
-	manager := coreauth.NewManager(nil, nil, nil)
-	manager.SetConfig(&internalconfig.Config{Home: internalconfig.HomeConfig{Enabled: true}})
-	manager.RegisterExecutor(executor)
-	registry := executionregistry.New()
-	releaseSink := newHandlerReleaseSink()
-	registry.SetReleaseSink(releaseSink.MarkDirty)
-	dispatcher := &handlerAccountedHomeDispatcher{}
-	manager.PublishHomeDispatch(dispatcher, registry, 1)
-	handler := NewBaseAPIHandlers(&sdkconfig.SDKConfig{Streaming: sdkconfig.StreamingConfig{BootstrapRetries: 1}}, manager)
-	handler.SetPluginHost(&handlerInterceptorTestHost{interceptStreamChunk: func(_ context.Context, req pluginapi.StreamChunkInterceptRequest) pluginapi.StreamChunkInterceptResponse {
-		return pluginapi.StreamChunkInterceptResponse{Body: cloneBytes(req.Body), DropChunk: string(req.Body) == "drop"}
-	}})
-
-	dataChan, _, errChan := handler.ExecuteStreamWithAuthManager(context.Background(), "openai", "home-model", []byte(`{"model":"home-model"}`), "")
-	for range dataChan {
-		t.Fatal("Home bootstrap failure produced data")
-	}
-	var streamErr *interfaces.ErrorMessage
-	for msg := range errChan {
-		if msg != nil {
-			streamErr = msg
-		}
-	}
-	if streamErr == nil || streamErr.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("stream error = %+v, want unauthorized terminal error", streamErr)
-	}
-	if got := dispatcher.calls.Load(); got != 1 {
-		t.Fatalf("Home RPOP calls = %d, want 1", got)
-	}
-	select {
-	case <-releaseSink.notified:
-	case <-time.After(time.Second):
-		t.Fatal("accounted Home selection was not released")
-	}
-	wantRelease := handlerReleaseNotification{
-		group:    executionregistry.ReleaseGroup{CredentialID: "handler-cred", Model: "home-model"},
-		sequence: 1,
-	}
-	if got := releaseSink.Notifications(); len(got) != 1 || got[0] != wantRelease {
-		t.Fatalf("release notifications = %#v, want [%#v]", got, wantRelease)
-	}
-	if errDrain := registry.Drain(context.Background()); errDrain != nil {
-		t.Fatalf("registry.Drain(): %v", errDrain)
-	}
-	if got := releaseSink.Notifications(); len(got) != 1 || got[0] != wantRelease {
-		t.Fatalf("release notifications after drain = %#v, want [%#v]", got, wantRelease)
 	}
 }
 

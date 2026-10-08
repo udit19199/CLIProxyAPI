@@ -17,7 +17,7 @@ import (
 )
 
 func TestV8SharedUpstreamRequestSettingsAffectBothAuthKinds(t *testing.T) {
-	for _, provider := range []string{"codex", "xai"} {
+	for _, provider := range []string{"codex"} {
 		for _, kind := range []string{cliproxyauth.AuthKindAPIKey, cliproxyauth.AuthKindOAuth} {
 			for _, stream := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%s/stream=%t", provider, kind, stream), func(t *testing.T) {
@@ -37,7 +37,6 @@ disable-image-generation: true
 client: {codex: {optimize-multi-agent-v2: true}}
 upstream:
   codex: {orphan-delegation-compatibility: true}
-  xai: {inject-x-search: true}
 `))
 					if err != nil {
 						t.Fatal(err)
@@ -49,9 +48,6 @@ upstream:
 						auth.Metadata = map[string]any{"access_token": "test-token"}
 					}
 					var executor cliproxyauth.ProviderExecutor = NewCodexExecutor(cfg)
-					if provider == "xai" {
-						executor = NewXAIExecutor(cfg)
-					}
 					manager := cliproxyauth.NewManager(nil, nil, nil)
 					manager.SetConfig(cfg)
 					manager.RegisterExecutor(executor)
@@ -82,14 +78,10 @@ upstream:
 					if got := gjson.GetBytes(body, "input.0.type").String(); got != "message" {
 						t.Fatalf("shared orphan delegation type = %q; body=%s", got, body)
 					}
-					if provider == "codex" {
-						if got := gjson.GetBytes(body, "tools.0.name").String(); got != "collaboration-optimize" {
-							t.Fatalf("client collaboration namespace = %q, want collaboration-optimize", got)
-						}
-					} else if !gjson.GetBytes(body, `tools.#(type=="x_search")`).Exists() {
-						t.Fatal("shared x_search setting was not applied")
+					if got := gjson.GetBytes(body, "tools.0.name").String(); got != "collaboration-optimize" {
+						t.Fatalf("client collaboration namespace = %q, want collaboration-optimize", got)
 					}
-					if !cfg.Client.Codex.OptimizeMultiAgentV2 || !cfg.Codex.OrphanDelegationCompatibility || !cfg.XAI.InjectXSearch {
+					if !cfg.Client.Codex.OptimizeMultiAgentV2 || !cfg.Codex.OrphanDelegationCompatibility {
 						t.Fatal("request changed shared configuration")
 					}
 				})
@@ -99,7 +91,7 @@ upstream:
 }
 
 func TestV8ScopedExecutorsPreserveWebsocketStores(t *testing.T) {
-	cfg, err := config.ParseConfigBytes([]byte("upstream: {codex: {response-steering: true}, xai: {inject-x-search: true}}\noauth: {providers: {codex: {header-defaults: {user-agent: oauth-agent}}}}"))
+	cfg, err := config.ParseConfigBytes([]byte("upstream: {codex: {response-steering: true}}\noauth: {providers: {codex: {header-defaults: {user-agent: oauth-agent}}}}"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,12 +100,7 @@ func TestV8ScopedExecutorsPreserveWebsocketStores(t *testing.T) {
 	if boundCodex.wsExec.store != codex.wsExec.store || !boundCodex.httpExec.cfg.Codex.ResponseSteering || !boundCodex.wsExec.cfg.Codex.ResponseSteering || boundCodex.httpExec.cfg.CodexHeaderDefaults.UserAgent != "" {
 		t.Fatal("scoped Codex executor lost sessions or inherited OAuth settings")
 	}
-	xai := NewXAIAutoExecutor(cfg)
-	boundXAI := xai.ForAPIKey().(*XAIAutoExecutor)
-	if boundXAI.wsExec.store != xai.wsExec.store || boundXAI.wsExec.idStore != xai.wsExec.idStore || !boundXAI.httpExec.cfg.XAI.InjectXSearch || !boundXAI.wsExec.cfg.XAI.InjectXSearch || boundXAI.httpExec.cfg.CodexHeaderDefaults.UserAgent != "" {
-		t.Fatal("scoped xAI executor lost sessions or inherited OAuth settings")
-	}
-	if codex.httpExec.cfg != cfg || codex.wsExec.cfg != cfg || xai.httpExec.cfg != cfg || xai.wsExec.cfg != cfg || !cfg.Codex.ResponseSteering || !cfg.XAI.InjectXSearch {
+	if codex.httpExec.cfg != cfg || codex.wsExec.cfg != cfg || !cfg.Codex.ResponseSteering {
 		t.Fatal("scoping changed the registered executors")
 	}
 }

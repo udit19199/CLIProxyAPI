@@ -10,7 +10,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/home"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
@@ -176,11 +175,8 @@ func TestModelsEndpoint_ExposesResponseToPluginInterceptors_Gemini(t *testing.T)
 }
 
 func TestModelsEndpoint_ExposesResponseToPluginInterceptors_CodexClientVersion(t *testing.T) {
-	for _, useHome := range []bool{false, true} {
+	for _, useHome := range []bool{false} {
 		name := "local"
-		if useHome {
-			name = "home"
-		}
 		t.Run(name, func(t *testing.T) {
 			server := newTestServer(t)
 			updatedCfg := *server.cfg
@@ -194,13 +190,6 @@ func TestModelsEndpoint_ExposesResponseToPluginInterceptors_CodexClientVersion(t
 				modelRegistry.UnregisterClient("interceptor-patch-models")
 				modelRegistry.UnregisterClient("interceptor-unknown-models")
 			})
-			if useHome {
-				server.cfg.Home.Enabled = true
-				client := newHomeCatalogClient(t, `{"interceptor-patch":[{"id":"interceptor-patch-supported"}],"remote":[{"id":"interceptor-patch-unknown"}]}`)
-				previousHome := home.Current()
-				home.SetCurrent(client)
-				t.Cleanup(func() { home.SetCurrent(previousHome) })
-			}
 			intercepted := false
 			server.handlers.SetPluginHost(&mockModelListInterceptorHost{
 				interceptResponse: func(_ context.Context, req pluginapi.ResponseInterceptRequest) pluginapi.ResponseInterceptResponse {

@@ -124,7 +124,7 @@ func (s *Service) commitConfigUpdate(newCfg *config.Config) configCommit {
 	s.cfg = newCfg
 	s.cfgMu.Unlock()
 	s.configSequence++
-	registry.UpdateModelCatalogSources(newCfg.Models, newCfg.Home.Enabled)
+	registry.UpdateModelCatalogSources(newCfg.Models, false)
 	return configCommit{cfg: newCfg, sequence: s.configSequence}
 }
 
@@ -181,7 +181,7 @@ func (s *Service) applyConfigRuntime(ctx context.Context, commit configCommit, s
 		auths = s.coreManager.List()
 	}
 	s.registerAvailableExecutors(registrationCtx, executorRegistrationOptions{
-		includeBaseline:   cfg.Home.Enabled,
+		includeBaseline:   false,
 		forceReplaceAuths: true,
 		auths:             auths,
 	})
@@ -194,7 +194,7 @@ func (s *Service) applyConfigRuntime(ctx context.Context, commit configCommit, s
 	if errContext := ctx.Err(); errContext != nil {
 		return false
 	}
-	if s.coreManager != nil && !cfg.Home.Enabled && cfg.SaveCooldownStatus {
+	if s.coreManager != nil && cfg.SaveCooldownStatus {
 		if errRestoreCooldown := s.coreManager.RestoreCooldownStates(registrationCtx); errRestoreCooldown != nil && ctx.Err() == nil {
 			log.Warnf("failed to restore cooldown state after config update: %v", errRestoreCooldown)
 		}
@@ -293,18 +293,4 @@ func (s *Service) registerConfigAPIKeyAuths(ctx context.Context, cfg *config.Con
 		s.coreManager.RefreshAPIKeyModelAlias()
 	}
 	s.runModelRegistrationTasks(registrationCtx, tasks)
-}
-
-func forceHomeRuntimeConfig(cfg *config.Config) {
-	if cfg == nil {
-		return
-	}
-	cfg.APIKeys = nil
-	cfg.UsageStatisticsEnabled = true
-	cfg.DisableCooling = true
-	cfg.SaveCooldownStatus = false
-	cfg.WebsocketAuth = false
-	cfg.RemoteManagement.AllowRemote = false
-	cfg.RemoteManagement.DisableControlPanel = true
-	cfg.Plugins.StoreAuth = nil
 }

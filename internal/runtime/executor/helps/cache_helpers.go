@@ -2,10 +2,10 @@ package helps
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"sync"
 	"time"
-
-	homekv "github.com/router-for-me/CLIProxyAPI/v8/internal/home"
 )
 
 type CodexCache struct {
@@ -61,19 +61,6 @@ func GetCodexCache(key string) (CodexCache, bool) {
 
 // GetCodexCacheRequired retrieves a cached entry for request-time paths.
 func GetCodexCacheRequired(ctx context.Context, key string) (CodexCache, bool, error) {
-	var homeCache CodexCache
-	homeMode, found, errGet := homekv.KVGetJSONRequired(ctx, key, &homeCache)
-	if homeMode {
-		if errGet != nil || !found {
-			return CodexCache{}, false, errGet
-		}
-		if homeCache.Expire.Before(time.Now()) {
-			_, _, _ = homekv.KVDelRequired(ctx, key)
-			return CodexCache{}, false, nil
-		}
-		return homeCache, true, nil
-	}
-
 	codexCacheCleanupOnce.Do(startCodexCacheCleanup)
 	codexCacheMu.RLock()
 	cache, ok := codexCacheMap[key]
@@ -95,10 +82,6 @@ func SetCodexCacheRequired(ctx context.Context, key string, cache CodexCache) er
 	if ttl <= 0 {
 		return nil
 	}
-	if _, homeMode, _ := homekv.CurrentKVClient(); homeMode {
-		_, errSet := homekv.KVSetJSONRequired(ctx, key, cache, ttl)
-		return errSet
-	}
 	codexCacheCleanupOnce.Do(startCodexCacheCleanup)
 	codexCacheMu.Lock()
 	codexCacheMap[key] = cache
@@ -108,21 +91,12 @@ func SetCodexCacheRequired(ctx context.Context, key string, cache CodexCache) er
 
 // SetCodexCacheBestEffort stores a cache entry without failing completed responses.
 func SetCodexCacheBestEffort(ctx context.Context, key string, cache CodexCache) bool {
-	ttl := time.Until(cache.Expire)
-	if ttl <= 0 {
-		return false
-	}
-	if _, homeMode, _ := homekv.CurrentKVClient(); homeMode {
-		return homekv.KVSetJSONBestEffort(ctx, key, cache, ttl)
-	}
-	codexCacheCleanupOnce.Do(startCodexCacheCleanup)
-	codexCacheMu.Lock()
-	codexCacheMap[key] = cache
-	codexCacheMu.Unlock()
-	return true
+	return SetCodexCacheRequired(ctx, key, cache) == nil
 }
 
-// CodexPromptCacheKey builds the Home KV key for a model/user prompt cache.
+// CodexPromptCacheKey builds the cache key for a model/user prompt cache.
 func CodexPromptCacheKey(modelName string, userScope string) string {
-	return "cpa:codex:prompt-cache:" + homekv.HashKeyPart(modelName) + ":" + homekv.HashKeyPart(userScope)
+	sum1 := sha256.Sum256([]byte(modelName))
+	sum2 := sha256.Sum256([]byte(userScope))
+	return "cpa:codex:prompt-cache:" + hex.EncodeToString(sum1[:]) + ":" + hex.EncodeToString(sum2[:])
 }

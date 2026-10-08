@@ -19,8 +19,6 @@ func newDefaultAuthManager() *sdkAuth.Manager {
 	return sdkAuth.NewManager(
 		sdkAuth.GetTokenStore(),
 		sdkAuth.NewCodexAuthenticator(),
-		sdkAuth.NewClaudeAuthenticator(),
-		sdkAuth.NewXAIAuthenticator(),
 	)
 }
 
@@ -456,9 +454,6 @@ func (s *Service) applyCoreAuthRemoval(ctx context.Context, id string) {
 	GlobalModelRegistry().UnregisterClient(id)
 	if strings.EqualFold(provider, "codex") {
 		executor.CloseCodexWebsocketSessionsForAuthID(id, "auth_removed")
-	}
-	if strings.EqualFold(provider, "xai") {
-		executor.CloseXAIWebsocketSessionsForAuthID(id, "auth_removed")
 	}
 }
 

@@ -2,14 +2,12 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"testing"
 
 	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executionregistry"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
 
@@ -553,83 +551,6 @@ func TestSelectedCodexConfigurationUpdateCapabilityExecutionModelOverride(t *tes
 					t.Fatalf("ExecuteCount() error = %v", errCount)
 				}
 				check(t, "ExecuteCount")
-			})
-		})
-	}
-}
-
-type selectedCapabilityHomeDispatcher struct {
-	auth *Auth
-}
-
-func (selectedCapabilityHomeDispatcher) HeartbeatOK() bool { return true }
-
-func (d selectedCapabilityHomeDispatcher) RPopAuth(context.Context, string, string, http.Header, int) ([]byte, error) {
-	return json.Marshal(homeAuthDispatchResponse{
-		Model: "gpt-6-luna", Auth: *d.auth,
-		ModelInfo: &homeDispatchModelInfo{ID: "home-selected-model"},
-	})
-}
-
-func (selectedCapabilityHomeDispatcher) AbortAmbiguousDispatch() {}
-
-func TestSelectedCodexConfigurationUpdateCapabilityHomeExecutionModelOverride(t *testing.T) {
-	auth := configuredCapabilityTestAuth("home-codex-unlisted", "home-key")
-	auth.Provider = "codex"
-	manager := NewManager(nil, nil, nil)
-	manager.SetConfig(&internalconfig.Config{
-		Home:     internalconfig.HomeConfig{Enabled: true},
-		CodexKey: []internalconfig.CodexKey{{APIKey: "home-key", Prefix: "tenant"}},
-	})
-	manager.PublishHomeDispatch(selectedCapabilityHomeDispatcher{auth: auth}, executionregistry.New(), 1)
-	executor := &selectedCapabilityCaptureExecutor{provider: "codex"}
-	manager.RegisterExecutor(executor)
-
-	for _, tc := range []struct {
-		name, model, wantInfoID string
-		selectionModel          string
-	}{
-		{name: "restored_execution_model", model: "gpt-6-luna", selectionModel: "tenant/gpt-6-luna", wantInfoID: "gpt-6-luna"},
-		{name: "home_selection_precedence", model: "tenant/gpt-6-luna", wantInfoID: "home-selected-model"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			request := cliproxyexecutor.Request{Model: tc.model}
-			opts := cliproxyexecutor.Options{}
-			if tc.selectionModel != "" {
-				opts.Metadata = map[string]any{cliproxyexecutor.AuthSelectionModelMetadataKey: tc.selectionModel}
-			}
-			check := func(t *testing.T) {
-				t.Helper()
-				if len(executor.requests) != 1 {
-					t.Fatalf("Home executor requests = %d, want 1", len(executor.requests))
-				}
-				execReq := executor.requests[0]
-				executor.requests = nil
-				info, ok := ResolvedModelInfo(execReq)
-				if !ok || info == nil || info.ID != tc.wantInfoID || info.SupportConfigurationUpdate {
-					t.Fatalf("Home execution model %q capability = (%+v, %t), want ID=%q update=false", execReq.Model, info, ok, tc.wantInfoID)
-				}
-			}
-			t.Run("Execute", func(t *testing.T) {
-				if _, errExecute := manager.Execute(t.Context(), []string{"codex"}, request, opts); errExecute != nil {
-					t.Fatalf("Execute() error = %v", errExecute)
-				}
-				check(t)
-			})
-			t.Run("ExecuteStream", func(t *testing.T) {
-				stream, errStream := manager.ExecuteStream(t.Context(), []string{"codex"}, request, opts)
-				if errStream != nil {
-					t.Fatalf("ExecuteStream() error = %v", errStream)
-				}
-				for range stream.Chunks {
-				}
-				check(t)
-			})
-			t.Run("ExecuteCount", func(t *testing.T) {
-				if _, errCount := manager.ExecuteCount(t.Context(), []string{"codex"}, request, opts); errCount != nil {
-					t.Fatalf("ExecuteCount() error = %v", errCount)
-				}
-				check(t)
 			})
 		})
 	}

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	chatresponses "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/openai/openai/responses"
@@ -36,66 +35,22 @@ func task6ProviderFixture(provider, mode, toolName string) string {
 	if mode == "eof" {
 		args = `{"input":"`
 	}
-	switch provider {
-	case "claude", "claude-oauth":
-		if mode == "nonstream" {
-			return fmt.Sprintf(`{"id":"r","type":"message","role":"assistant","content":[{"type":"tool_use","id":"c","name":%q,"input":%s}],"usage":{"input_tokens":5,"output_tokens":3}}`, toolName, args)
-		}
-		start := fmt.Sprintf("data: {\"type\":\"message_start\",\"message\":{\"id\":\"r\",\"model\":\"claude-sonnet-4-6\",\"usage\":{\"input_tokens\":5}}}\n\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"c\",\"name\":%q,\"input\":{}}}\n\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":%q}}\n\n", toolName, args)
-		if mode != "eof" {
-			start += "data: {\"type\":\"content_block_stop\",\"index\":0}\n\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":3}}\n\ndata: {\"type\":\"message_stop\"}\n\n"
-		}
-		return start
-	case "gemini", "vertex", "antigravity":
-		args = `{"input":7,"secret":"RAW_SECRET"}`
-		if mode == "eof" {
-			args = `{"input":"unfinished"}`
-		}
-		finish := `,"finishReason":"STOP"`
-		if mode == "eof" {
-			finish = ""
-		}
-		body := fmt.Sprintf(`{"responseId":"r","candidates":[{"content":{"parts":[{"functionCall":{"name":"apply_patch","args":%s}}]}%s}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":3}}`, args, finish)
-		if provider == "antigravity" {
-			body = `{"response":` + body + `}`
-		}
-		if mode != "nonstream" {
-			return "data: " + body + "\n\n"
-		}
-		return body
-	case "gemini-interactions":
-		if mode == "nonstream" {
-			return fmt.Sprintf(`{"id":"r","steps":[{"type":"function_call","id":"c","name":"apply_patch","arguments":%q}],"usage":{"total_input_tokens":5,"total_output_tokens":3}}`, args)
-		}
-		body := fmt.Sprintf("data: {\"event_type\":\"interaction.created\",\"interaction\":{\"id\":\"r\"}}\n\ndata: {\"event_type\":\"step.start\",\"index\":0,\"step\":{\"type\":\"function_call\",\"id\":\"c\",\"name\":\"apply_patch\"}}\n\ndata: {\"event_type\":\"step.delta\",\"index\":0,\"delta\":{\"type\":\"function_call\",\"arguments\":%q}}\n\n", args)
-		if mode != "eof" {
-			body += "data: {\"event_type\":\"interaction.completed\",\"interaction\":{\"id\":\"r\"}}\n\ndata: [DONE]\n\n"
-		}
-		return body
-	default:
-		if mode == "nonstream" {
-			return fmt.Sprintf(`{"id":"r","object":"chat.completion","choices":[{"message":{"tool_calls":[{"id":"c","type":"function","function":{"name":"apply_patch","arguments":%q}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":5,"completion_tokens":3}}`, args)
-		}
-		body := fmt.Sprintf("data: {\"id\":\"r\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"apply_patch\",\"arguments\":%q}}]}}]}\n\n", args)
-		if mode != "eof" {
-			body += "data: {\"id\":\"r\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":3}}\n\ndata: [DONE]\n\n"
-		}
-		return body
+	if mode == "nonstream" {
+		return fmt.Sprintf(`{"id":"r","object":"chat.completion","choices":[{"message":{"tool_calls":[{"id":"c","type":"function","function":{"name":"apply_patch","arguments":%q}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":5,"completion_tokens":3}}`, args)
 	}
+	body := fmt.Sprintf("data: {\"id\":\"r\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"apply_patch\",\"arguments\":%q}}]}}]}\n\n", args)
+	if mode != "eof" {
+		body += "data: {\"id\":\"r\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":3}}\n\ndata: [DONE]\n\n"
+	}
+	return body
 }
 
 func task6Executor(provider string) cliproxyauth.ProviderExecutor {
 	cfg := &config.Config{}
-	switch provider {
-	case "claude", "claude-oauth":
-		return NewClaudeExecutor(cfg)
-	case "xai":
-		return NewXAIExecutor(cfg)
-	case "codex":
+	if provider == "codex" {
 		return NewCodexExecutor(cfg)
-	default:
-		return NewOpenAICompatExecutor(provider, cfg)
 	}
+	return NewOpenAICompatExecutor(provider, cfg)
 }
 
 func assertTask6PatchError(t *testing.T, err error) {
@@ -129,7 +84,7 @@ func assertTask6FailedStream(t *testing.T, chunks <-chan cliproxyexecutor.Stream
 }
 
 func TestApplyPatchActualProviderErrorAndEOF(t *testing.T) {
-	for _, provider := range []string{"custom-compat", "claude", "claude-oauth"} {
+	for _, provider := range []string{"custom-compat"} {
 		for _, mode := range []string{"nonstream", "stream", "eof", "empty", "scanner"} {
 			t.Run(provider+"/"+mode, func(t *testing.T) {
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -234,28 +189,6 @@ func task6CaptureFailureUsageWithCheck(t *testing.T, id string, check func(usage
 	}
 }
 
-func TestApplyPatchResponsesInvalidTerminalUsage(t *testing.T) {
-	for _, provider := range []string{"xai"} {
-		t.Run(provider, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "text/event-stream")
-				_, _ = io.WriteString(w, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"r\"}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[{\"type\":\"function_call\",\"id\":\"c\",\"name\":\"apply_patch\",\"arguments\":\"{}\"}],\"usage\":{\"input_tokens\":5,\"output_tokens\":3}}}\n\n")
-			}))
-			defer server.Close()
-			exec := NewXAIExecutor(&config.Config{})
-			auth := &cliproxyauth.Auth{ID: "task6-invalid-terminal", Provider: provider, Attributes: map[string]string{"api_key": "test", "base_url": server.URL}}
-			checkUsage := task6CaptureFailureUsage(t, auth.ID)
-			defer checkUsage()
-			req := cliproxyexecutor.Request{Model: "grok-4", Payload: []byte(task6PatchRequest)}
-			result, errExecuteStream := exec.ExecuteStream(t.Context(), auth, req, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse, OriginalRequest: req.Payload})
-			if errExecuteStream != nil {
-				t.Fatal(errExecuteStream)
-			}
-			assertTask6FailedStream(t, result.Chunks)
-		})
-	}
-}
-
 func task6Gateway(t *testing.T, exec cliproxyauth.ProviderExecutor, auth *cliproxyauth.Auth, stream bool) *httptest.ResponseRecorder {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -278,93 +211,18 @@ func task6Gateway(t *testing.T, exec cliproxyauth.ProviderExecutor, auth *clipro
 	return recorder
 }
 
-func TestApplyPatchFailurePreservesUpstreamUsage(t *testing.T) {
-	const sseBody = `data: {"type":"response.created","response":{"id":"r"}}
-
-data: {"type":"response.completed","response":{"output":[{"type":"function_call","id":"c","name":"apply_patch","arguments":"{}"}],"usage":{"input_tokens":5,"output_tokens":3}}}
-
-`
-	for _, tc := range []struct {
-		name     string
-		provider string
-		body     string
-		stream   bool
-		compact  bool
-	}{
-		{name: "xai-compact", provider: "xai", body: `{"id":"r","output":[{"type":"function_call","id":"c","name":"apply_patch","arguments":"{}"}],"usage":{"input_tokens":5,"output_tokens":3}}`, compact: true},
-		{name: "xai-sse", provider: "xai", body: sseBody, stream: true},
-		{name: "xai-buffered-sse", provider: "xai", body: sseBody},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if tc.compact && r.URL.Path != "/responses/compact" {
-					t.Errorf("request path = %q, want /responses/compact", r.URL.Path)
-				}
-				if tc.stream {
-					w.Header().Set("Content-Type", "text/event-stream")
-				}
-				_, _ = io.WriteString(w, tc.body)
-			}))
-			defer server.Close()
-
-			exec := NewXAIExecutor(&config.Config{})
-			auth := &cliproxyauth.Auth{ID: "task6-usage-" + tc.name, Provider: tc.provider, Attributes: map[string]string{"api_key": "test", "base_url": server.URL}}
-			checkUsage := task6CaptureFailureUsageWithCheck(t, auth.ID, func(record usage.Record) {
-				if record.Detail.InputTokens != 5 || record.Detail.OutputTokens != 3 {
-					t.Errorf("failure usage = %+v, want input/output 5/3", record.Detail)
-				}
-			})
-			req := cliproxyexecutor.Request{Model: "grok-4", Payload: []byte(task6PatchRequest)}
-			opts := cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse, OriginalRequest: req.Payload}
-			if tc.compact {
-				opts.Alt = "responses/compact"
-			}
-			if tc.stream {
-				result, errExecuteStream := exec.ExecuteStream(t.Context(), auth, req, opts)
-				if errExecuteStream != nil {
-					t.Fatal(errExecuteStream)
-				}
-				assertTask6FailedStream(t, result.Chunks)
-			} else {
-				result, errExecute := exec.Execute(t.Context(), auth, req, opts)
-				if len(result.Payload) != 0 {
-					t.Errorf("failed response returned payload %s", result.Payload)
-				}
-				assertTask6PatchError(t, errExecute)
-			}
-			checkUsage()
-		})
-	}
-}
-
 func TestApplyPatchHTTPGatewayErrorMatrix(t *testing.T) {
-	for _, provider := range []string{"custom-compat", "claude", "claude-oauth", "xai"} {
+	for _, provider := range []string{"custom-compat"} {
 		for _, mode := range []string{"nonstream", "stream", "eof"} {
 			t.Run(provider+"/"+mode, func(t *testing.T) {
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					body, errReadAll := io.ReadAll(r.Body)
+					_, errReadAll := io.ReadAll(r.Body)
 					if errReadAll != nil {
 						t.Error(errReadAll)
 						return
 					}
 					name := "apply_patch"
 					actualMode := mode
-					if strings.HasPrefix(provider, "claude") {
-						name = gjson.GetBytes(body, "tools.0.name").String()
-						if mode == "nonstream" {
-							actualMode = "stream"
-						}
-					}
-					if provider == "xai" {
-						w.Header().Set("Content-Type", "text/event-stream")
-						_, _ = io.WriteString(w, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"r\"}}\n\n")
-						if mode == "eof" {
-							_, _ = io.WriteString(w, "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"c\",\"type\":\"function_call\",\"name\":\"apply_patch\",\"arguments\":\"\"}}\n\n")
-							return
-						}
-						_, _ = io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"output\":[{\"type\":\"function_call\",\"name\":\"apply_patch\",\"arguments\":\"{}\"}],\"usage\":{\"input_tokens\":5,\"output_tokens\":3}}}\n\n")
-						return
-					}
 					if actualMode != "nonstream" {
 						w.Header().Set("Content-Type", "text/event-stream")
 					}
@@ -372,14 +230,7 @@ func TestApplyPatchHTTPGatewayErrorMatrix(t *testing.T) {
 				}))
 				defer server.Close()
 				exec := task6Executor(provider)
-				if provider == "xai" {
-					exec = NewXAIExecutor(&config.Config{})
-				}
 				auth := &cliproxyauth.Auth{ID: "task6-http-" + provider + mode, Provider: exec.Identifier(), Attributes: map[string]string{"api_key": "test", "base_url": server.URL}}
-				if provider == "claude-oauth" {
-					auth.Attributes["api_key"] = "sk-ant-oat-test"
-					auth.Metadata = map[string]any{"account_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
-				}
 				checkUsage := task6CaptureFailureUsage(t, auth.ID)
 				defer checkUsage()
 				result := task6Gateway(t, exec, auth, mode != "nonstream")
@@ -464,70 +315,6 @@ func TestApplyPatchFailureStopsConsumptionAndNextAttemptIsFresh(t *testing.T) {
 	response, errExecute := exec.Execute(t.Context(), auth, req, opts)
 	if errExecute != nil || gjson.GetBytes(response.Payload, "output.0.input").String() != "valid patch" {
 		t.Fatalf("next attempt reused failed state: %s %v", response.Payload, errExecute)
-	}
-}
-
-func TestApplyPatchXAIWebsocketFailureMatrix(t *testing.T) {
-	for _, mode := range []string{"invalid", "eof"} {
-		for _, raw := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/raw=%v", mode, raw), func(t *testing.T) {
-				upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					conn, errUpgrade := upgrader.Upgrade(w, r, nil)
-					if errUpgrade != nil {
-						return
-					}
-					defer func() {
-						if errClose := conn.Close(); errClose != nil {
-							t.Log(errClose)
-						}
-					}()
-					if _, _, errReadMessage := conn.ReadMessage(); errReadMessage != nil {
-						return
-					}
-					_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.created","response":{"id":"r"}}`))
-					if mode == "eof" {
-						_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"c","name":"apply_patch","arguments":""}}`))
-					} else {
-						_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.completed","response":{"output":[{"type":"function_call","name":"apply_patch","arguments":"{\"input\":7,\"secret\":\"RAW_SECRET\"}"}],"usage":{"input_tokens":5,"output_tokens":3}}}`))
-					}
-				}))
-				defer server.Close()
-				exec := NewXAIWebsocketsExecutor(&config.Config{})
-				exec.store = &codexWebsocketSessionStore{sessions: make(map[string]*codexWebsocketSession)}
-				auth := &cliproxyauth.Auth{ID: "task6-ws-" + t.Name(), Provider: "xai", Attributes: map[string]string{"api_key": "test", "base_url": server.URL, "websockets": "true"}}
-				checkUsage := task6CaptureFailureUsage(t, auth.ID)
-				defer checkUsage()
-				if !raw {
-					response := task6Gateway(t, exec, auth, true)
-					body := response.Body.String()
-					if response.Code != http.StatusOK || strings.Count(body, "event: response.failed") != 1 || strings.Contains(body, "event: response.completed") || strings.Contains(body, "RAW_SECRET") || strings.Contains(body, "data: [DONE]") {
-						t.Fatalf("WS to HTTP failure contract: %d %s", response.Code, body)
-					}
-					return
-				}
-				result, errExecuteStream := exec.ExecuteStream(cliproxyexecutor.WithDownstreamWebsocket(t.Context()), auth, cliproxyexecutor.Request{Model: "grok-4", Payload: []byte(task6PatchRequest)}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse})
-				if errExecuteStream != nil {
-					t.Fatal(errExecuteStream)
-				}
-				failed, errors := 0, 0
-				for chunk := range result.Chunks {
-					if chunk.Err != nil {
-						errors++
-						assertTask6PatchError(t, chunk.Err)
-					}
-					if gjson.GetBytes(chunk.Payload, "type").String() == "response.failed" {
-						failed++
-					}
-					if bytes.Contains(chunk.Payload, []byte("RAW_SECRET")) || gjson.GetBytes(chunk.Payload, "type").String() == "response.completed" {
-						t.Fatal("raw WS failure leaked or completed")
-					}
-				}
-				if failed != 1 || errors != 1 {
-					t.Fatalf("raw WS failures=%d errors=%d", failed, errors)
-				}
-			})
-		}
 	}
 }
 

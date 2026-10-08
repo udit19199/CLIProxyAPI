@@ -6,8 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/home"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/tidwall/gjson"
@@ -110,23 +108,5 @@ func TestIssue5190ModelDetailHomeVisibility(t *testing.T) {
 	}
 	if rr := get("local/only", false); rr.Code != 401 {
 		t.Fatalf("unauthorized detail: %d", rr.Code)
-	}
-	server.cfg.Home.Enabled = true
-	// The catalog fixture does not implement Home's readiness handshake.
-	// Reuse the registered route without the unrelated readiness middleware.
-	engine = gin.New()
-	for _, route := range server.engine.Routes() {
-		if route.Method == http.MethodGet && route.Path == "/v1/models/*model" {
-			engine.GET(route.Path, route.HandlerFunc)
-		}
-	}
-	previousHome := home.Current()
-	home.SetCurrent(newHomeCatalogClient(t, `{"openai":[{"id":"home/visible"}]}`))
-	t.Cleanup(func() { home.SetCurrent(previousHome) })
-	if rr := get("home/visible", true); rr.Code != 200 || gjson.Get(rr.Body.String(), "id").String() != "home/visible" {
-		t.Fatalf("Home detail: %d %s", rr.Code, rr.Body.String())
-	}
-	if rr := get("local/only", true); rr.Code != 404 {
-		t.Fatalf("local registry leaked into Home: %d %s", rr.Code, rr.Body.String())
 	}
 }

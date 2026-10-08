@@ -4,13 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
-
-	homekv "github.com/router-for-me/CLIProxyAPI/v8/internal/home"
-	log "github.com/sirupsen/logrus"
 )
 
 // SignatureEntry holds a cached thinking signature with timestamp
@@ -38,17 +34,6 @@ var signatureCache sync.Map
 
 // cacheCleanupOnce ensures the background cleanup goroutine starts only once
 var cacheCleanupOnce sync.Once
-
-type signatureKVClient interface {
-	KVGet(ctx context.Context, key string) ([]byte, bool, error)
-	KVSet(ctx context.Context, key string, value []byte, opts homekv.KVSetOptions) (bool, error)
-	KVDel(ctx context.Context, keys ...string) (int64, error)
-	KVExpire(ctx context.Context, key string, ttl time.Duration) (bool, error)
-}
-
-var currentSignatureKVClient = func() (signatureKVClient, bool, error) {
-	return homekv.CurrentKVClient()
-}
 
 // groupCache is the inner map type
 type groupCache struct {
@@ -108,9 +93,6 @@ func purgeExpiredCaches() {
 		return true
 	})
 	purgeExpiredCodexReasoningReplayCache(now)
-	purgeExpiredXAIReasoningReplayCache(now)
-	purgeExpiredThinkingReplayCache(now)
-	purgeExpiredClaudeThinkingReplayCache(now)
 }
 
 // CacheSignature stores a thinking signature for a given model group and text.
@@ -126,19 +108,6 @@ func CacheSignatureBestEffort(ctx context.Context, modelName, text, signature st
 	}
 	if len(signature) < MinValidSignatureLen {
 		return false
-	}
-
-	if client, homeMode, errClient := currentSignatureKVClient(); homeMode {
-		if errClient != nil {
-			log.Errorf("home kv best-effort signature set failed prefix=cpa:signature:*: %v", errClient)
-			return false
-		}
-		written, errSet := client.KVSet(ctx, signatureKVKey(modelName, text), []byte(signature), homekv.KVSetOptions{EX: SignatureCacheTTL})
-		if errSet != nil {
-			log.Errorf("home kv best-effort signature set failed prefix=cpa:signature:*: %v", errSet)
-			return false
-		}
-		return written
 	}
 
 	groupKey := GetModelGroup(modelName)
@@ -173,27 +142,6 @@ func GetCachedSignatureRequired(ctx context.Context, modelName, text string) (st
 			return "skip_thought_signature_validator", nil
 		}
 		return "", nil
-	}
-
-	if client, homeMode, errClient := currentSignatureKVClient(); homeMode {
-		if errClient != nil {
-			return "", errClient
-		}
-		key := signatureKVKey(modelName, text)
-		raw, found, errGet := client.KVGet(ctx, key)
-		if errGet != nil {
-			return "", errGet
-		}
-		if !found {
-			if groupKey == "gemini" {
-				return "skip_thought_signature_validator", nil
-			}
-			return "", nil
-		}
-		if _, errExpire := client.KVExpire(ctx, key, SignatureCacheTTL); errExpire != nil {
-			return "", errExpire
-		}
-		return string(raw), nil
 	}
 
 	val, ok := signatureCache.Load(groupKey)
@@ -253,13 +201,6 @@ func DeleteCachedSignatureRequired(ctx context.Context, modelName, text string) 
 	if text == "" {
 		return nil
 	}
-	if client, homeMode, errClient := currentSignatureKVClient(); homeMode {
-		if errClient != nil {
-			return errClient
-		}
-		_, errDel := client.KVDel(ctx, signatureKVKey(modelName, text))
-		return errDel
-	}
 	groupKey := GetModelGroup(modelName)
 	textHash := hashText(text)
 	val, ok := signatureCache.Load(groupKey)
@@ -291,8 +232,4 @@ func GetModelGroup(modelName string) string {
 		return "gemini"
 	}
 	return modelName
-}
-
-func signatureKVKey(modelName, text string) string {
-	return fmt.Sprintf("cpa:signature:%s:%s", GetModelGroup(modelName), homekv.HashKeyPart(text))
 }

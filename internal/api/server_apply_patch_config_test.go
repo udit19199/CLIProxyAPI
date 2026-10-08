@@ -6,15 +6,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/home"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 )
 
 func TestModelsApplyPatchClientConfigAndReload(t *testing.T) {
-	for _, source := range []string{"local", "home"} {
+	for _, source := range []string{"local"} {
 		t.Run(source, func(t *testing.T) {
 			modelRegistry := registry.GetGlobalRegistry()
 			models := []*registry.ModelInfo{{ID: "gpt-5.5"}, {ID: "config-patch-synthetic"}, {ID: "gpt-image-2"}}
@@ -25,15 +23,6 @@ func TestModelsApplyPatchClientConfigAndReload(t *testing.T) {
 			server := newTestServer(t)
 			server.handlers.AuthManager.RegisterExecutor(executor.NewCodexAutoExecutor(&config.Config{}))
 			engine := server.engine
-			if source == "home" {
-				server.cfg.Home.Enabled = true
-				client := newHomeCatalogClient(t, `{"codex":[{"id":"gpt-5.5"},{"id":"config-patch-synthetic"},{"id":"gpt-image-2"}],"remote":[{"id":"config-patch-unknown"}]}`)
-				previousHome := home.Current()
-				home.SetCurrent(client)
-				t.Cleanup(func() { home.SetCurrent(previousHome) })
-				engine = gin.New()
-				engine.GET("/v1/models", server.unifiedModelsHandler(nil, nil))
-			}
 			for _, tc := range []struct {
 				name string
 				raw  string

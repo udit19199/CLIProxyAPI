@@ -48,7 +48,6 @@ func TestShouldEnableExampleAPIKeySafeMode(t *testing.T) {
 		cfg                *config.Config
 		commandMode        bool
 		cloudConfigMissing bool
-		homeMode           bool
 		want               bool
 	}{
 		{
@@ -61,12 +60,6 @@ func TestShouldEnableExampleAPIKeySafeMode(t *testing.T) {
 			cfg:         cfgWithExampleKey,
 			commandMode: true,
 			want:        false,
-		},
-		{
-			name:     "home mode is not blocked",
-			cfg:      cfgWithExampleKey,
-			homeMode: true,
-			want:     false,
 		},
 		{
 			name:               "cloud standby without config is not blocked",
@@ -88,54 +81,9 @@ func TestShouldEnableExampleAPIKeySafeMode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := shouldEnableExampleAPIKeySafeMode(tt.cfg, tt.commandMode, tt.cloudConfigMissing, tt.homeMode)
+			got := shouldEnableExampleAPIKeySafeMode(tt.cfg, tt.commandMode, tt.cloudConfigMissing)
 			if got != tt.want {
 				t.Fatalf("shouldEnableExampleAPIKeySafeMode() = %t, want %t", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestHomeConfigPayloadPortApplication(t *testing.T) {
-	tests := []struct {
-		name     string
-		yamlBody string
-		wantPort int
-	}{
-		{
-			name:     "custom port honored",
-			yamlBody: "port: 9090\n",
-			wantPort: 9090,
-		},
-		{
-			name:     "custom port 8327 honored",
-			yamlBody: "port: 8327\n",
-			wantPort: 8327,
-		},
-		{
-			name:     "missing port defaults to 8317",
-			yamlBody: "debug: true\n",
-			wantPort: 8317,
-		},
-		{
-			name:     "standard port 8317 preserved",
-			yamlBody: "port: 8317\n",
-			wantPort: 8317,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			parsed, errParse := config.ParseConfigBytes([]byte(tt.yamlBody))
-			if errParse != nil {
-				t.Fatalf("ParseConfigBytes() error = %v", errParse)
-			}
-			if parsed == nil {
-				parsed = &config.Config{}
-			}
-			parsed.Port = config.NormalizeHomePort(parsed.Port)
-			if parsed.Port != tt.wantPort {
-				t.Fatalf("parsed.Port = %d, want %d", parsed.Port, tt.wantPort)
 			}
 		})
 	}

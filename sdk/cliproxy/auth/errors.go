@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -339,4 +340,34 @@ func WithCause(err *Error, cause error) error {
 		base:  err,
 		cause: cause,
 	}
+}
+
+// SafeResponseHeaders extracts and formats safe retry headers from an error.
+func SafeResponseHeaders(err error) http.Header {
+	var modelCooldown *modelCooldownError
+	if errors.As(err, &modelCooldown) && modelCooldown != nil {
+		return modelCooldown.Headers()
+	}
+	var unavailable *authUnavailableError
+	if errors.As(err, &unavailable) && unavailable != nil {
+		return unavailable.Headers()
+	}
+	if ra := retryAfterFromError(err); ra != nil {
+		return safeRetryAfterHeader(*ra)
+	}
+	return nil
+}
+
+func safeRetryAfterHeader(retryAfter time.Duration) http.Header {
+	if retryAfter <= 0 {
+		return nil
+	}
+	seconds := int64(retryAfter / time.Second)
+	if retryAfter%time.Second != 0 {
+		seconds++
+	}
+	if seconds < 1 {
+		seconds = 1
+	}
+	return http.Header{"Retry-After": []string{strconv.FormatInt(seconds, 10)}}
 }

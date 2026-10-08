@@ -2,7 +2,6 @@ package logging
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -66,42 +65,6 @@ func (l *FileRequestLogger) logRequestWithSources(url, method string, requestHea
 
 	if !l.enabled && !force {
 		return nil
-	}
-
-	if l.homeEnabled && l.enabled {
-		responseToWrite, decompressErr := l.decompressResponse(responseHeaders, response)
-		if decompressErr != nil {
-			responseToWrite = response
-		}
-
-		var buf bytes.Buffer
-		writeErr := l.writeNonStreamingLog(
-			&buf,
-			url,
-			method,
-			requestHeaders,
-			body,
-			"",
-			websocketTimeline,
-			websocketTimelineSource,
-			apiRequest,
-			apiRequestSource,
-			apiResponse,
-			apiResponseSource,
-			apiWebsocketTimeline,
-			apiWebsocketTimelineSource,
-			apiResponseErrors,
-			statusCode,
-			responseHeaders,
-			responseToWrite,
-			decompressErr,
-			requestTimestamp,
-			apiResponseTimestamp,
-		)
-		if writeErr != nil {
-			return fmt.Errorf("failed to build request log content: %w", writeErr)
-		}
-		return l.forwardRequestLogToHome(context.Background(), requestHeaders, requestID, buf.String())
 	}
 
 	// Ensure logs directory exists
@@ -195,14 +158,6 @@ func (l *FileRequestLogger) logRequestWithSources(url, method string, requestHea
 func (l *FileRequestLogger) LogStreamingRequest(url, method string, headers map[string][]string, body []byte, requestID string) (StreamingLogWriter, error) {
 	if !l.enabled {
 		return &NoOpStreamingLogWriter{}, nil
-	}
-
-	if l.homeEnabled {
-		client := currentHomeRequestLogClient()
-		if client == nil || !client.HeartbeatOK() {
-			return &NoOpStreamingLogWriter{}, nil
-		}
-		return newHomeStreamingLogWriter(url, method, headers, body, requestID), nil
 	}
 
 	// Ensure logs directory exists

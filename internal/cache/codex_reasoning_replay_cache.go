@@ -2,15 +2,12 @@ package cache
 
 import (
 	"context"
-	"encoding/json"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	homekv "github.com/router-for-me/CLIProxyAPI/v8/internal/home"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/signature"
-	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -48,18 +45,6 @@ var (
 	codexReasoningReplayEntries = make(map[string]codexReasoningReplayEntry)
 )
 
-type codexReasoningReplayKVClient interface {
-	KVGet(ctx context.Context, key string) ([]byte, bool, error)
-	KVSet(ctx context.Context, key string, value []byte, opts homekv.KVSetOptions) (bool, error)
-	KVCompareAndSwap(ctx context.Context, key string, expected []byte, expectedExists bool, value []byte, ttl time.Duration) (bool, error)
-	KVDel(ctx context.Context, keys ...string) (int64, error)
-	KVExpire(ctx context.Context, key string, ttl time.Duration) (bool, error)
-}
-
-var currentCodexReasoningReplayKVClient = func() (codexReasoningReplayKVClient, bool, error) {
-	return homekv.CurrentKVClient()
-}
-
 // CacheCodexReasoningReplayItem stores a final GPT/Codex reasoning item for
 // stateless replay. The stored item is normalized to the minimal shape accepted
 // by Responses input replay.
@@ -82,23 +67,6 @@ func CacheCodexReasoningReplayItemsBestEffort(ctx context.Context, modelName, se
 	normalized, ok := normalizeCodexReasoningReplayItems(items)
 	if !ok {
 		return false
-	}
-	if client, homeMode, errClient := currentCodexReasoningReplayKVClient(); homeMode {
-		if errClient != nil {
-			log.Errorf("home kv best-effort codex reasoning replay set failed prefix=cpa:codex:*: %v", errClient)
-			return false
-		}
-		raw, errMarshal := json.Marshal(normalized)
-		if errMarshal != nil {
-			log.Errorf("home kv best-effort codex reasoning replay set failed prefix=cpa:codex:*: %v", errMarshal)
-			return false
-		}
-		written, errSet := client.KVSet(ctx, codexReasoningReplayKVKey(modelName, sessionKey), raw, homekv.KVSetOptions{EX: CodexReasoningReplayCacheTTL})
-		if errSet != nil {
-			log.Errorf("home kv best-effort codex reasoning replay set failed prefix=cpa:codex:*: %v", errSet)
-			return false
-		}
-		return written
 	}
 
 	cacheCleanupOnce.Do(startCacheCleanup)
@@ -126,47 +94,6 @@ func AppendCodexReasoningReplayItemsBestEffort(ctx context.Context, modelName, s
 	}
 	normalized, ok := normalizeCodexReasoningReplayItems(items)
 	if !ok {
-		return false
-	}
-	if client, homeMode, errClient := currentCodexReasoningReplayKVClient(); homeMode {
-		if errClient != nil {
-			log.Errorf("home kv best-effort codex reasoning replay append failed prefix=cpa:codex:*: %v", errClient)
-			return false
-		}
-		kvKey := codexReasoningReplayKVKey(modelName, sessionKey)
-		const maxCASAttempts = 32
-		for attempt := 0; attempt < maxCASAttempts; attempt++ {
-			if errContext := ctx.Err(); errContext != nil {
-				return false
-			}
-			existingRaw, found, errGet := client.KVGet(ctx, kvKey)
-			if errGet != nil {
-				log.Errorf("home kv best-effort codex reasoning replay append failed prefix=cpa:codex:*: %v", errGet)
-				return false
-			}
-			var existing [][]byte
-			if found {
-				if errUnmarshal := json.Unmarshal(existingRaw, &existing); errUnmarshal != nil {
-					log.Errorf("home kv best-effort codex reasoning replay append failed prefix=cpa:codex:*: %v", errUnmarshal)
-					return false
-				}
-			}
-			combined := appendCodexReasoningReplayTurn(existing, normalized)
-			raw, errMarshal := json.Marshal(combined)
-			if errMarshal != nil {
-				log.Errorf("home kv best-effort codex reasoning replay append failed prefix=cpa:codex:*: %v", errMarshal)
-				return false
-			}
-			written, errCAS := client.KVCompareAndSwap(ctx, kvKey, existingRaw, found, raw, CodexReasoningReplayCacheTTL)
-			if errCAS != nil {
-				log.Errorf("home kv best-effort codex reasoning replay append failed prefix=cpa:codex:*: %v", errCAS)
-				return false
-			}
-			if written {
-				return true
-			}
-		}
-		log.Warn("home kv best-effort codex reasoning replay append exhausted compare-and-swap attempts")
 		return false
 	}
 
@@ -258,24 +185,6 @@ func GetCodexReasoningReplayItemsRequired(ctx context.Context, modelName, sessio
 	if key == "" {
 		return nil, false, nil
 	}
-	client, homeMode, errClient := currentCodexReasoningReplayKVClient()
-	if homeMode {
-		if errClient != nil {
-			return nil, false, errClient
-		}
-		raw, found, errGet := client.KVGet(ctx, codexReasoningReplayKVKey(modelName, sessionKey))
-		if errGet != nil || !found {
-			return nil, false, errGet
-		}
-		var homeItems [][]byte
-		if errUnmarshal := json.Unmarshal(raw, &homeItems); errUnmarshal != nil {
-			return nil, false, errUnmarshal
-		}
-		if _, errExpire := client.KVExpire(ctx, codexReasoningReplayKVKey(modelName, sessionKey), CodexReasoningReplayCacheTTL); errExpire != nil {
-			return nil, false, errExpire
-		}
-		return cloneCodexReasoningReplayItems(homeItems), true, nil
-	}
 
 	cacheCleanupOnce.Do(startCacheCleanup)
 	now := time.Now()
@@ -308,14 +217,6 @@ func DeleteCodexReasoningReplayItemRequired(ctx context.Context, modelName, sess
 	if key == "" {
 		return nil
 	}
-	client, homeMode, errClient := currentCodexReasoningReplayKVClient()
-	if homeMode {
-		if errClient != nil {
-			return errClient
-		}
-		_, errDel := client.KVDel(ctx, codexReasoningReplayKVKey(modelName, sessionKey))
-		return errDel
-	}
 	codexReasoningReplayMu.Lock()
 	delete(codexReasoningReplayEntries, key)
 	codexReasoningReplayMu.Unlock()
@@ -338,10 +239,6 @@ func codexReasoningReplayCacheKey(modelName, sessionKey string) string {
 	// The session key is the continuity boundary. Keep this independent from
 	// the selected upstream Codex credential so auth failover can preserve replay.
 	return strings.Join([]string{"codex-reasoning-replay", modelName, sessionKey}, "\x00")
-}
-
-func codexReasoningReplayKVKey(modelName, sessionKey string) string {
-	return "cpa:codex:reasoning-replay:" + homekv.HashKeyPart(strings.TrimSpace(modelName)) + ":" + homekv.HashKeyPart(strings.TrimSpace(sessionKey))
 }
 
 func normalizeCodexReasoningReplayItems(items [][]byte) ([][]byte, bool) {

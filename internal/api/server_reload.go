@@ -149,7 +149,7 @@ func (s *Server) UpdateClientsContext(ctx context.Context, cfg *config.Config) b
 			s.managementRoutesEnabled.Store(!newSecretEmpty)
 		}
 	}
-	redisqueue.SetEnabled(s.managementRoutesEnabled.Load() || (cfg != nil && cfg.Home.Enabled))
+	redisqueue.SetEnabled(s.managementRoutesEnabled.Load())
 
 	exampleAPIKeySafeModeRequired := s.exampleAPIKeySafeModeRequired(cfg)
 	if exampleAPIKeySafeModeRequired {

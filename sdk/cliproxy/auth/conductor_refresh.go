@@ -499,26 +499,6 @@ func clearUnauthorizedModelStates(auth *Auth, now time.Time) []string {
 	return resumed
 }
 
-// RefreshHomeSelectionAfterUnauthorized only reuses a newer snapshot already
-// installed by Home. It never refreshes or mutates Home-owned credentials.
-func (m *Manager) RefreshHomeSelectionAfterUnauthorized(_ context.Context, selection *HomeDispatchSelection, failedAuth *Auth) (*Auth, bool, error) {
-	if m == nil || selection == nil {
-		return nil, false, nil
-	}
-	current := selection.CloneAuth()
-	if failedAuth == nil {
-		failedAuth = current
-	}
-	if current != nil && failedAuth != nil && current.ID == failedAuth.ID {
-		currentToken := authAccessToken(current)
-		failedToken := authAccessToken(failedAuth)
-		if currentToken != "" && failedToken != "" && currentToken != failedToken {
-			return current, true, nil
-		}
-	}
-	return current, false, nil
-}
-
 // tryRefreshAfterUnauthorized refreshes local OAuth credentials once after a
 // 401 so the current auth can be retried before fallback/suspend.
 func (m *Manager) tryRefreshAfterUnauthorized(ctx context.Context, auth *Auth, execErr error, alreadyTried bool) (*Auth, bool) {

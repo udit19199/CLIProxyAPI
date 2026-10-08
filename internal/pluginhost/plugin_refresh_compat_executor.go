@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
@@ -125,9 +124,6 @@ func (e *pluginRefreshCompatExecutor) Refresh(ctx context.Context, auth *coreaut
 	}
 	if ctx == nil {
 		ctx = context.Background()
-	}
-	if refreshed, handled, errHome := helps.RefreshAuthViaHome(ctx, e.cfg, auth); handled {
-		return refreshed, errHome
 	}
 	if e.host != nil {
 		if refreshed, handled, errRefresh := e.host.RefreshAuth(ctx, auth); handled {

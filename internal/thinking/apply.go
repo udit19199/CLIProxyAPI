@@ -18,13 +18,9 @@ type pluginProviderApplier struct {
 
 var providerAppliersMu sync.RWMutex
 
-// nativeProviderAppliers maps built-in provider names to their implementations.
 var nativeProviderAppliers = map[string]ProviderApplier{
-	"gemini": nil,
-	"claude": nil,
 	"openai": nil,
 	"codex":  nil,
-	"xai":    nil,
 }
 
 // pluginProviderAppliers maps plugin-owned provider names to their implementations.

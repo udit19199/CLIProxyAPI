@@ -373,15 +373,6 @@ func (m *Manager) Remove(ctx context.Context, id string) {
 	if m.modelPoolOffsets != nil {
 		delete(m.modelPoolOffsets, id)
 	}
-	for sessionID, sessionAuths := range m.homeRuntimeAuths {
-		if sessionAuths == nil {
-			continue
-		}
-		delete(sessionAuths, id)
-		if len(sessionAuths) == 0 {
-			delete(m.homeRuntimeAuths, sessionID)
-		}
-	}
 	if m.authEpochs == nil {
 		m.authEpochs = make(map[string]uint64)
 	}

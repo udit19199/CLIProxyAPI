@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/constant"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/pluginhost"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
@@ -204,34 +203,17 @@ func (s *Service) registerAvailableExecutors(ctx context.Context, opts executorR
 }
 
 func baselineExecutorAuths() []*coreauth.Auth {
-	providers := []string{
-		"codex",
-		"claude",
-		constant.Gemini,
-		constant.GeminiInteractions,
-		"vertex",
-		"aistudio",
-		"antigravity",
-		"kimi",
-		"kimi-ai",
-		"kimi.ai",
-		"xai",
-		"devin",
-		"meta",
-		"openai-compatibility",
+	return []*coreauth.Auth{
+		{
+			ID:       "codex",
+			Provider: "codex",
+		},
+		{
+			ID:         "openai-compatibility",
+			Provider:   "openai-compatibility",
+			Attributes: map[string]string{"compat_name": "openai-compatibility"},
+		},
 	}
-	auths := make([]*coreauth.Auth, 0, len(providers))
-	for _, provider := range providers {
-		auth := &coreauth.Auth{
-			ID:       provider,
-			Provider: provider,
-		}
-		if provider == "openai-compatibility" {
-			auth.Attributes = map[string]string{"compat_name": "openai-compatibility"}
-		}
-		auths = append(auths, auth)
-	}
-	return auths
 }
 
 func (s *Service) registerExecutorsForAuths(auths []*coreauth.Auth, forceReplace bool) {
@@ -284,19 +266,6 @@ func (s *Service) registerExecutorForAuth(a *coreauth.Auth, forceReplace bool) {
 		return
 	}
 	switch strings.ToLower(a.Provider) {
-	case "claude":
-		s.coreManager.RegisterExecutor(executor.NewClaudeExecutor(cfg))
-	case "xai":
-		if !forceReplace {
-			existingExecutor, hasExecutor := s.coreManager.Executor("xai")
-			if hasExecutor {
-				existingXAIAutoExecutor, isXAIAutoExecutor := existingExecutor.(*executor.XAIAutoExecutor)
-				if isXAIAutoExecutor && existingXAIAutoExecutor.UsesConfig(cfg) {
-					return
-				}
-			}
-		}
-		s.coreManager.RegisterExecutor(executor.NewXAIAutoExecutor(cfg))
 	default:
 		providerKey := strings.ToLower(strings.TrimSpace(a.Provider))
 		if providerKey == "" {

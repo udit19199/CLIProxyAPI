@@ -2,16 +2,12 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"sort"
 	"sync"
 	"testing"
 
-	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/home"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executionregistry"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
 
@@ -313,143 +309,5 @@ func TestExecuteSnapshotsDefaultRequestRetry(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-type retryRoundHomeDispatcher struct {
-	mu       sync.Mutex
-	limits   map[string]int
-	rounds   []int
-	newCalls int
-	oldCalls int
-}
-
-func (*retryRoundHomeDispatcher) HeartbeatOK() bool { return true }
-
-func (d *retryRoundHomeDispatcher) RPopAuth(ctx context.Context, model, sessionID string, headers http.Header, count int) ([]byte, error) {
-	return d.RPopAuthWithRetryRoundConstraints(ctx, model, sessionID, headers, count, 0, nil, "")
-}
-
-func (d *retryRoundHomeDispatcher) RPopAuthWithConstraints(ctx context.Context, model, sessionID string, headers http.Header, count int, excluded []string, pinned string) ([]byte, error) {
-	d.mu.Lock()
-	d.oldCalls++
-	d.mu.Unlock()
-	return d.RPopAuthWithRetryRoundConstraints(ctx, model, sessionID, headers, count, 0, excluded, pinned)
-}
-
-func (d *retryRoundHomeDispatcher) RPopAuthWithRetryRoundConstraints(_ context.Context, _ string, _ string, _ http.Header, _ int, retryRound int, excluded []string, pinned string) ([]byte, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.newCalls++
-	d.rounds = append(d.rounds, retryRound)
-	excludedSet := make(map[string]struct{}, len(excluded))
-	for _, id := range excluded {
-		excludedSet[id] = struct{}{}
-	}
-	ids := make([]string, 0, len(d.limits))
-	maxRetry := 0
-	for id, limit := range d.limits {
-		if limit >= retryRound {
-			ids = append(ids, id)
-			if limit > maxRetry {
-				maxRetry = limit
-			}
-		}
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		if _, okExcluded := excludedSet[id]; okExcluded || (pinned != "" && pinned != id) {
-			continue
-		}
-		return json.Marshal(homeAuthDispatchResponse{
-			RequestRetry: func() *int { value := maxRetry; return &value }(),
-			Auth:         Auth{ID: id, Provider: "retry-round-home", Status: StatusActive, Metadata: map[string]any{"request_retry": d.limits[id]}},
-		})
-	}
-	return nil, home.ErrAuthNotFound
-}
-
-func (*retryRoundHomeDispatcher) AbortAmbiguousDispatch() {}
-
-func (d *retryRoundHomeDispatcher) roundsSeen() []int {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return append([]int(nil), d.rounds...)
-}
-
-func (d *retryRoundHomeDispatcher) dispatchMethodCalls() (int, int) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.newCalls, d.oldCalls
-}
-
-func TestExecuteHomeRetryRoundCredentialWindows(t *testing.T) {
-	tests := []struct {
-		name   string
-		invoke func(*Manager, cliproxyexecutor.Request) error
-	}{
-		{
-			name: "non-stream",
-			invoke: func(manager *Manager, req cliproxyexecutor.Request) error {
-				_, errExecute := manager.Execute(context.Background(), []string{"retry-round-home"}, req, cliproxyexecutor.Options{})
-				return errExecute
-			},
-		},
-		{
-			name: "count-tokens",
-			invoke: func(manager *Manager, req cliproxyexecutor.Request) error {
-				_, errExecute := manager.ExecuteCount(context.Background(), []string{"retry-round-home"}, req, cliproxyexecutor.Options{})
-				return errExecute
-			},
-		},
-		{
-			name: "stream",
-			invoke: func(manager *Manager, req cliproxyexecutor.Request) error {
-				_, errExecute := manager.ExecuteStream(context.Background(), []string{"retry-round-home"}, req, cliproxyexecutor.Options{Stream: true})
-				return errExecute
-			},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			manager := NewManager(nil, nil, nil)
-			manager.SetConfig(&internalconfig.Config{Home: internalconfig.HomeConfig{Enabled: true}})
-			manager.SetRetryConfig(3, 0, 3)
-			dispatcher := &retryRoundHomeDispatcher{limits: map[string]int{
-				"retry-round-a": 3,
-				"retry-round-b": 2,
-				"retry-round-c": 2,
-			}}
-			manager.PublishHomeDispatch(dispatcher, executionregistry.New(), 1)
-			executor := &retryRoundCallExecutor{identifier: "retry-round-home"}
-			manager.RegisterExecutor(executor)
-
-			if errExecute := test.invoke(manager, cliproxyexecutor.Request{Model: "retry-round-model"}); errExecute == nil {
-				t.Fatal("execution error = nil, want terminal retry error")
-			}
-			counts := countRetryRoundIDs(executor.ids(map[string]string{"non-stream": "execute", "count-tokens": "count", "stream": "stream"}[test.name]))
-			if counts["retry-round-a"] != 4 || counts["retry-round-b"] != 3 || counts["retry-round-c"] != 3 {
-				t.Fatalf("credential call counts = %#v, want A=4 B=3 C=3", counts)
-			}
-			rounds := dispatcher.roundsSeen()
-			if len(rounds) == 0 || rounds[0] != 0 {
-				t.Fatalf("Home retry rounds = %v, want initial round 0", rounds)
-			}
-			foundRoundOne := false
-			foundRoundTwo := false
-			foundRoundThree := false
-			for _, round := range rounds {
-				foundRoundOne = foundRoundOne || round == 1
-				foundRoundTwo = foundRoundTwo || round == 2
-				foundRoundThree = foundRoundThree || round == 3
-			}
-			if !foundRoundOne || !foundRoundTwo || !foundRoundThree {
-				t.Fatalf("Home retry rounds = %v, want rounds 0,1,2,3", rounds)
-			}
-			newCalls, oldCalls := dispatcher.dispatchMethodCalls()
-			if newCalls == 0 || oldCalls != 0 {
-				t.Fatalf("Home dispatcher method calls = new %d, old %d; want new interface only", newCalls, oldCalls)
-			}
-		})
 	}
 }

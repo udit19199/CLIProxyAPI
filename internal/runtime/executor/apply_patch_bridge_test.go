@@ -190,8 +190,8 @@ func TestApplyPatchBridgeLiveHTTPPreviewMatrix(t *testing.T) {
 		provider, protocol string
 		snapshot           bool
 	}{
-		{"custom-compat", "chat", false}, {"claude", "claude", false}, {"claude-oauth", "claude", false},
-		{"xai", "responses", false},
+		{"custom-compat", "chat", false},
+		{"codex", "responses", false},
 	} {
 		t.Run(tc.provider, func(t *testing.T) {
 			release := make(chan struct{})
@@ -206,9 +206,6 @@ func TestApplyPatchBridgeLiveHTTPPreviewMatrix(t *testing.T) {
 				}
 				requestBody <- body
 				name := "apply_patch"
-				if tc.protocol == "claude" {
-					name = gjson.GetBytes(body, "tools.0.name").String()
-				}
 				first, last := applyPatchTestFrames(tc.protocol, name)
 				w.Header().Set("Content-Type", "text/event-stream")
 				if _, errWriteString := io.WriteString(w, first); errWriteString != nil {
@@ -229,10 +226,6 @@ func TestApplyPatchBridgeLiveHTTPPreviewMatrix(t *testing.T) {
 				exec = task6RepairExecutor(tc.provider)
 			}
 			auth := &cliproxyauth.Auth{ID: t.Name(), Provider: exec.Identifier(), Attributes: map[string]string{"api_key": "test", "base_url": upstream.URL}}
-			if tc.provider == "claude-oauth" {
-				auth.Attributes["api_key"] = "sk-ant-oat-test"
-				auth.Metadata = map[string]any{"account_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
-			}
 			gateway := newApplyPatchTestGateway(t, exec, auth)
 			// Catalog claims must be backed by the executor used by the POST below.
 			for _, version := range []string{"0.137.0", "0.153.4", "cpa"} {
@@ -517,18 +510,15 @@ func applyPatchTestPreviewChunks(t *testing.T, chunks <-chan cliproxyexecutor.St
 }
 
 func TestApplyPatchBridgeLiveWebsocketPreview(t *testing.T) {
-	for _, native := range []bool{false, true} {
+	for _, native := range []bool{true} {
 		t.Run(fmt.Sprintf("native-codex=%v", native), func(t *testing.T) {
 			release := make(chan struct{})
 			var releaseOnce sync.Once
 			unblock := func() { releaseOnce.Do(func() { close(release) }) }
 			bodies := make(chan []byte, 1)
-			first, last := applyPatchTestFrames("responses", "apply_patch")
-			if native {
-				first = "data: { \"type\":\"response.output_item.added\", \"output_index\":0,\"item\":{\"type\":\"custom_tool_call\",\"id\":\"a1\",\"call_id\":\"c1\",\"name\":\"apply_patch\",\"input\":\"\"}}\n\ndata: { \"type\":\"response.custom_tool_call_input.delta\", \"output_index\":0,\"item_id\":\"a1\",\"call_id\":\"c1\",\"delta\":\"*** Begin Patch\\n*** Add File: a.txt\\n+hello\\n\"}\n\n"
-				item := fmt.Sprintf(`{ "type":"custom_tool_call", "id":"a1","call_id":"c1","name":"apply_patch","input":%q}`, applyPatchTestInput)
-				last = fmt.Sprintf("data: { \"type\":\"response.custom_tool_call_input.delta\", \"output_index\":0,\"item_id\":\"a1\",\"call_id\":\"c1\",\"delta\":\"*** End Patch\\n\"}\n\ndata: { \"type\":\"response.custom_tool_call_input.done\", \"item_id\":\"a1\",\"call_id\":\"c1\",\"input\":%q}\n\ndata: { \"type\":\"response.output_item.done\", \"output_index\":0,\"item\":%s}\n\ndata: { \"type\":\"response.completed\", \"response\":{\"id\":\"r1\",\"status\":\"completed\",\"output\":[%s]}}\n\n", applyPatchTestInput, item, item)
-			}
+			first := "data: { \"type\":\"response.output_item.added\", \"output_index\":0,\"item\":{\"type\":\"custom_tool_call\",\"id\":\"a1\",\"call_id\":\"c1\",\"name\":\"apply_patch\",\"input\":\"\"}}\n\ndata: { \"type\":\"response.custom_tool_call_input.delta\", \"output_index\":0,\"item_id\":\"a1\",\"call_id\":\"c1\",\"delta\":\"*** Begin Patch\\n*** Add File: a.txt\\n+hello\\n\"}\n\n"
+			item := fmt.Sprintf(`{ "type":"custom_tool_call", "id":"a1","call_id":"c1","name":"apply_patch","input":%q}`, applyPatchTestInput)
+			last := fmt.Sprintf("data: { \"type\":\"response.custom_tool_call_input.delta\", \"output_index\":0,\"item_id\":\"a1\",\"call_id\":\"c1\",\"delta\":\"*** End Patch\\n\"}\n\ndata: { \"type\":\"response.custom_tool_call_input.done\", \"item_id\":\"a1\",\"call_id\":\"c1\",\"input\":%q}\n\ndata: { \"type\":\"response.output_item.done\", \"output_index\":0,\"item\":%s}\n\ndata: { \"type\":\"response.completed\", \"response\":{\"id\":\"r1\",\"status\":\"completed\",\"output\":[%s]}}\n\n", applyPatchTestInput, item, item)
 			upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				conn, errUpgrade := upgrader.Upgrade(w, r, nil)
@@ -565,16 +555,9 @@ func TestApplyPatchBridgeLiveWebsocketPreview(t *testing.T) {
 			}))
 			defer server.Close()
 			defer unblock()
-			var exec cliproxyauth.ProviderExecutor
-			if native {
-				codex := NewCodexWebsocketsExecutor(&config.Config{Codex: config.CodexConfig{DisableCodexCloaking: true}})
-				codex.store = &codexWebsocketSessionStore{sessions: make(map[string]*codexWebsocketSession)}
-				exec = codex
-			} else {
-				xai := NewXAIWebsocketsExecutor(&config.Config{})
-				xai.store = &codexWebsocketSessionStore{sessions: make(map[string]*codexWebsocketSession)}
-				exec = xai
-			}
+			codex := NewCodexWebsocketsExecutor(&config.Config{Codex: config.CodexConfig{DisableCodexCloaking: true}})
+			codex.store = &codexWebsocketSessionStore{sessions: make(map[string]*codexWebsocketSession)}
+			var exec cliproxyauth.ProviderExecutor = codex
 			ctx, cancel := context.WithCancel(cliproxyexecutor.WithDownstreamWebsocket(t.Context()))
 			defer cancel()
 			payload := applyPatchTestRequest()

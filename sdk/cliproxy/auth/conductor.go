@@ -168,18 +168,8 @@ type Manager struct {
 	scheduler                 *authScheduler
 	// pluginScheduler runs outside m.mu before falling back to native selection.
 	pluginScheduler PluginScheduler
-	// homeRuntimeAuths retains legacy session auth lookups for non-execution callers.
-	homeRuntimeAuths map[string]map[string]*Auth
-	// homeRuntimeAuthOwners prevents a stale selection from clearing a replacement auth.
-	homeRuntimeAuthOwners map[string]map[string]*HomeDispatchSelection
-	// homeSessionSelections owns retained Home selections for websocket sessions.
-	homeSessionSelections map[string]map[homeSessionSelectionKey]*HomeDispatchSelection
-	homeSessionLocks      sync.Map
-	homeSessionAliases    homeSessionAliasCache
 	// providerOffsets tracks per-model provider rotation state for multi-provider routing.
-	providerOffsets             map[string]int
-	homeDispatchBundle          atomic.Pointer[HomeDispatchBundle]
-	homeInFlightPublisherConfig atomic.Pointer[HomeInFlightPublisherConfig]
+	providerOffsets map[string]int
 
 	// Retry controls request retry behavior.
 	requestRetry        atomic.Int32
@@ -230,28 +220,26 @@ func NewManager(store Store, selector Selector, hook Hook) *Manager {
 		hook = NoopHook{}
 	}
 	manager := &Manager{
-		store:                 store,
-		authLoadGate:          semaphore.NewWeighted(math.MaxInt64),
-		executors:             make(map[string]ProviderExecutor),
-		selector:              selector,
-		hook:                  hook,
-		auths:                 make(map[string]*Auth),
-		authEpochs:            make(map[string]uint64),
-		homeRuntimeAuths:      make(map[string]map[string]*Auth),
-		homeRuntimeAuthOwners: make(map[string]map[string]*HomeDispatchSelection),
-		homeSessionSelections: make(map[string]map[homeSessionSelectionKey]*HomeDispatchSelection),
-		providerOffsets:       make(map[string]int),
-		modelPoolOffsets:      make(map[string]int),
+		store:            store,
+		authLoadGate:     semaphore.NewWeighted(math.MaxInt64),
+		executors:        make(map[string]ProviderExecutor),
+		selector:         selector,
+		hook:             hook,
+		auths:            make(map[string]*Auth),
+		authEpochs:       make(map[string]uint64),
+		providerOffsets:  make(map[string]int),
+		modelPoolOffsets: make(map[string]int),
 	}
 	// atomic.Value requires non-nil initial value.
 	manager.runtimeConfig.Store(&internalconfig.Config{})
 	manager.apiKeyModelRouting.Store(&apiKeyModelRoutingSnapshot{config: &internalconfig.Config{}})
-	defaultInFlightConfig, errInFlightConfig := HomeInFlightPublisherConfigFromConfig(internalconfig.DefaultCredentialInFlightConfig())
-	if errInFlightConfig == nil {
-		manager.ApplyHomeInFlightPublisherConfig(defaultInFlightConfig)
-	}
 	manager.scheduler = newAuthScheduler(selector)
 	return manager
+}
+
+// HomeEnabled reports whether Home dispatch is enabled. In this single-machine proxy, Home is disabled.
+func (m *Manager) HomeEnabled() bool {
+	return false
 }
 
 // SetResultPolicy sets an execution result policy invoked before in-memory quota mutations and persistence.

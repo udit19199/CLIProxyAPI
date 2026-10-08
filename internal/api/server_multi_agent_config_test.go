@@ -6,14 +6,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/home"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 )
 
 func TestModelsMultiAgentClientConfigAndReload(t *testing.T) {
-	for _, source := range []string{"local", "home"} {
+	for _, source := range []string{"local"} {
 		t.Run(source, func(t *testing.T) {
 			const modelID = "config-multi-agent-synthetic"
 			const clientID = "config-multi-agent-models"
@@ -22,15 +20,6 @@ func TestModelsMultiAgentClientConfigAndReload(t *testing.T) {
 			t.Cleanup(func() { modelRegistry.UnregisterClient(clientID) })
 			server := newTestServer(t)
 			engine := server.engine
-			if source == "home" {
-				server.cfg.Home.Enabled = true
-				client := newHomeCatalogClient(t, `{"codex":[{"id":"config-multi-agent-synthetic"}]}`)
-				previousHome := home.Current()
-				home.SetCurrent(client)
-				t.Cleanup(func() { home.SetCurrent(previousHome) })
-				engine = gin.New()
-				engine.GET("/v1/models", server.unifiedModelsHandler(nil, nil))
-			}
 			for _, tc := range []struct {
 				name string
 				raw  string

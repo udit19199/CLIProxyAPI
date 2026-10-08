@@ -7,14 +7,13 @@ Go 1.26+ proxy server providing OpenAI/Claude/Codex/Grok compatible APIs with OA
 - This is a fork. `origin` is the fork, `upstream` is the original. Sync from `upstream/main`, never from `origin`.
 
 ## Provider Scope
-This fork builds with three account providers only: **Codex**, **Claude**, and **xAI (Grok)**.
+This fork builds with one account provider only: **Codex**.
 
-Removed in full: `gemini`, `gemini-interactions`, `vertex`, `aistudio`, `antigravity`, `kimi`, `meta`, `devin`.
+Removed in full: `gemini`, `gemini-interactions`, `vertex`, `aistudio`, `antigravity`, `kimi`, `meta`, `devin`, `claude`, `xai (Grok)`, and the Home control plane.
 
-The protocol/format layer is intentionally retained. Inbound OpenAI Chat Completions, OpenAI Responses, Claude, and Gemini-format endpoints still work and translate to codex/claude/xai, because OpenCode and Cursor consume the OpenAI-compatible format. Do not remove a provider format solely because its account provider is gone — that breaks clients, not just providers.
+The protocol/format layer is intentionally retained. Inbound OpenAI Chat Completions, OpenAI Responses, Claude, and Gemini-format endpoints still work and translate to Codex, because OpenCode and Cursor consume the OpenAI/Claude-compatible formats. Do not remove a provider format solely because its account provider is gone — that breaks clients, not just providers.
 
-Two files are named after removed providers but are shared engine code, not provider code. Leave them alone:
-- `internal/runtime/executor/thinking_replay_shared.go` (formerly `kimi_thinking_replay.go`) — Claude's thinking replay aliases `thinkingReplayScope` and reuses the stream accumulator and content-replay helpers.
+Shared protocol helper retained:
 - `internal/runtime/executor/helps/gemini_ttft_helpers.go` — parses token events at the protocol level.
 
 ## Commands

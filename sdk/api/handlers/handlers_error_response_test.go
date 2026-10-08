@@ -163,52 +163,6 @@ func TestExecutionErrorMessageDoesNotTrustResponseBodyWithoutMarker(t *testing.T
 	}
 }
 
-func TestInternalConcurrencyBusyWritesRetryAfterWithoutPassthrough(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-
-	handler := NewBaseAPIHandlers(nil, nil)
-	handler.WriteErrorResponse(c, &interfaces.ErrorMessage{
-		StatusCode: http.StatusTooManyRequests,
-		Error:      coreauth.NewHomeConcurrencyBusyError("busy", 750*time.Millisecond),
-	})
-
-	if recorder.Code != http.StatusTooManyRequests {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusTooManyRequests)
-	}
-	if got := recorder.Header().Get("Retry-After"); got != "1" {
-		t.Fatalf("Retry-After = %q, want 1", got)
-	}
-}
-
-func TestWriteErrorResponseHomeBusyNormalAndStreamHeaders(t *testing.T) {
-	for _, stream := range []bool{false, true} {
-		t.Run(map[bool]string{false: "normal", true: "stream"}[stream], func(t *testing.T) {
-			gin.SetMode(gin.TestMode)
-			recorder := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(recorder)
-			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-			if stream {
-				c.Request.Header.Set("Accept", "text/event-stream")
-			}
-
-			handler := NewBaseAPIHandlers(nil, nil)
-			handler.WriteErrorResponse(c, &interfaces.ErrorMessage{
-				StatusCode: http.StatusTooManyRequests,
-				Error:      coreauth.NewHomeConcurrencyBusyError("busy", 750*time.Millisecond),
-			})
-			if recorder.Code != http.StatusTooManyRequests {
-				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusTooManyRequests)
-			}
-			if got := recorder.Header().Get("Retry-After"); got != "1" {
-				t.Fatalf("Retry-After = %q, want 1", got)
-			}
-		})
-	}
-}
-
 func TestWriteErrorResponse_AddonHeadersEnabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

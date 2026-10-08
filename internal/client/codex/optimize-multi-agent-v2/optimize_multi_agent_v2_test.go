@@ -119,31 +119,6 @@ func TestCodexSpawnAgentModelsFromSourcesIncludesModelMetadata(t *testing.T) {
 	}
 }
 
-func TestDecodeCodexHomeAvailableModels(t *testing.T) {
-	t.Parallel()
-
-	raw := []byte(`{
-		"codex":[{"id":"model-b","display_name":"Model B"},{"id":"model-a"}],
-		"other":[{"name":"models/model-c","displayName":"Model C"},{"id":"model-a","display_name":"duplicate"}]
-	}`)
-	models := decodeCodexHomeAvailableModels(raw)
-	if len(models) != 3 {
-		t.Fatalf("model count = %d, want 3", len(models))
-	}
-	if got := mapString(models[0], "id"); got != "model-a" {
-		t.Fatalf("first model ID = %q, want model-a", got)
-	}
-	if got := mapString(models[1], "description"); got != "Model B" {
-		t.Fatalf("model-b description = %q, want Model B", got)
-	}
-	if got := mapString(models[2], "id"); got != "model-c" {
-		t.Fatalf("last model ID = %q, want model-c", got)
-	}
-	if got := decodeCodexHomeAvailableModels([]byte(`{"error":{"type":"no_credentials"}}`)); got != nil {
-		t.Fatalf("error envelope decoded as models: %#v", got)
-	}
-}
-
 func TestRewriteCodexSpawnAgentDescriptionNormalizesModelList(t *testing.T) {
 	t.Parallel()
 

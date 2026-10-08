@@ -138,7 +138,7 @@ func applyPatchIdentitySource(interactions bool, first, boundary string, snapsho
 }
 
 func TestApplyPatchNamedLateIdentityActualTransports(t *testing.T) {
-	for _, transport := range []string{"xai", "ws-sse", "ws-raw"} {
+	for _, transport := range []string{"codex", "ws-sse", "ws-raw"} {
 		for _, first := range []string{"item", "call", "neither", "neither-item-first", "neither-call-first"} {
 			for _, boundary := range []string{"delta", "item", "terminal"} {
 				for _, snapshot := range []bool{false, true} {
@@ -150,7 +150,7 @@ func TestApplyPatchNamedLateIdentityActualTransports(t *testing.T) {
 						if transport == "ws-raw" {
 							ctx = cliproxyexecutor.WithDownstreamWebsocket(ctx)
 						}
-						stream, errExecuteStream := exec.ExecuteStream(ctx, auth, cliproxyexecutor.Request{Model: "grok-4", Payload: []byte(task6PatchRequest)}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse})
+						stream, errExecuteStream := exec.ExecuteStream(ctx, auth, cliproxyexecutor.Request{Model: "gpt-5.6-sol", Payload: []byte(task6PatchRequest)}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse})
 						if errExecuteStream != nil {
 							t.Fatal(errExecuteStream)
 						}
@@ -208,7 +208,7 @@ func applyPatchIdentityExecutor(t *testing.T, transport string, source [][]byte)
 	t.Cleanup(server.Close)
 	exec := task6RepairExecutor(transport)
 	if ws {
-		wsExec := NewXAIWebsocketsExecutor(&config.Config{})
+		wsExec := NewCodexWebsocketsExecutor(&config.Config{})
 		wsExec.store = &codexWebsocketSessionStore{sessions: make(map[string]*codexWebsocketSession)}
 		exec = wsExec
 	}
@@ -217,7 +217,7 @@ func applyPatchIdentityExecutor(t *testing.T, transport string, source [][]byte)
 }
 
 func TestApplyPatchNamedLateIdentityActualFailures(t *testing.T) {
-	for _, transport := range []string{"xai", "ws-sse", "ws-raw"} {
+	for _, transport := range []string{"codex", "ws-sse", "ws-raw"} {
 		for _, mode := range []string{"item-conflict", "call-conflict", "partial-snapshot", "invalid-snapshot", "eof"} {
 			t.Run(transport+"/"+mode, func(t *testing.T) {
 				interactions := transport == "interactions"
@@ -254,7 +254,7 @@ func TestApplyPatchNamedLateIdentityActualFailures(t *testing.T) {
 				if transport == "ws-raw" {
 					ctx = cliproxyexecutor.WithDownstreamWebsocket(ctx)
 				}
-				stream, errExecuteStream := exec.ExecuteStream(ctx, auth, cliproxyexecutor.Request{Model: "grok-4", Payload: []byte(task6PatchRequest)}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse})
+				stream, errExecuteStream := exec.ExecuteStream(ctx, auth, cliproxyexecutor.Request{Model: "gpt-5.6-sol", Payload: []byte(task6PatchRequest)}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse})
 				if errExecuteStream != nil {
 					t.Fatal(errExecuteStream)
 				}
@@ -284,7 +284,7 @@ func TestApplyPatchNamedLateIdentityActualFailures(t *testing.T) {
 }
 
 func TestApplyPatchNamedLateIdentityActualInterleaved(t *testing.T) {
-	for _, transport := range []string{"xai", "ws-sse", "ws-raw"} {
+	for _, transport := range []string{"codex", "ws-sse", "ws-raw"} {
 		t.Run(transport, func(t *testing.T) {
 			interactions := transport == "interactions"
 			first := applyPatchIdentitySource(interactions, "item", "item", false)
@@ -334,7 +334,7 @@ func TestApplyPatchNamedLateIdentityActualInterleaved(t *testing.T) {
 			if transport == "ws-raw" {
 				ctx = cliproxyexecutor.WithDownstreamWebsocket(ctx)
 			}
-			stream, errExecuteStream := exec.ExecuteStream(ctx, auth, cliproxyexecutor.Request{Model: "grok-4", Payload: []byte(task6PatchRequest)}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse})
+			stream, errExecuteStream := exec.ExecuteStream(ctx, auth, cliproxyexecutor.Request{Model: "gpt-5.6-sol", Payload: []byte(task6PatchRequest)}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse})
 			if errExecuteStream != nil {
 				t.Fatal(errExecuteStream)
 			}

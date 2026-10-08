@@ -67,7 +67,6 @@ func TestRegisterAvailableExecutors(t *testing.T) {
 	}
 	expectedPluginHost = service.pluginHost
 	expectedManager = service.coreManager
-	service.ensureWebsocketGateway()
 
 	service.registerAvailableExecutors(nil, executorRegistrationOptions{
 		includeBaseline: true,
@@ -80,8 +79,6 @@ func TestRegisterAvailableExecutors(t *testing.T) {
 
 	providers := []string{
 		"codex",
-		"claude",
-		"xai",
 		"openai-compatibility",
 		"plugin-provider",
 	}
@@ -132,15 +129,15 @@ func TestRegisterExecutorForAuth_OpenAICompatUsesNamespacedProviderKey(t *testin
 		{
 			name: "native first",
 			auths: []*coreauth.Auth{
-				{ID: "native-claude", Provider: "claude"},
-				openAICompatClaudeAuth(),
+				{ID: "native-codex", Provider: "codex"},
+				openAICompatCodexAuth(),
 			},
 		},
 		{
 			name: "compat first",
 			auths: []*coreauth.Auth{
-				openAICompatClaudeAuth(),
-				{ID: "native-claude", Provider: "claude"},
+				openAICompatCodexAuth(),
+				{ID: "native-codex", Provider: "codex"},
 			},
 		},
 	}
@@ -154,15 +151,15 @@ func TestRegisterExecutorForAuth_OpenAICompatUsesNamespacedProviderKey(t *testin
 
 			service.registerExecutorsForAuths(tt.auths, true)
 
-			nativeExecutor, okNative := service.coreManager.Executor("claude")
+			nativeExecutor, okNative := service.coreManager.Executor("codex")
 			if !okNative {
-				t.Fatal("expected native claude executor")
+				t.Fatal("expected native codex executor")
 			}
-			if _, okClaude := nativeExecutor.(*runtimeexecutor.ClaudeExecutor); !okClaude {
-				t.Fatalf("native executor type = %T, want *executor.ClaudeExecutor", nativeExecutor)
+			if _, okCodex := nativeExecutor.(*runtimeexecutor.CodexExecutor); !okCodex {
+				t.Fatalf("native executor type = %T, want *executor.CodexExecutor", nativeExecutor)
 			}
 
-			compatExecutor, okCompat := service.coreManager.Executor("openai-compatible-claude")
+			compatExecutor, okCompat := service.coreManager.Executor("openai-compatible-codex")
 			if !okCompat {
 				t.Fatal("expected namespaced OpenAI-compatible executor")
 			}
@@ -173,14 +170,14 @@ func TestRegisterExecutorForAuth_OpenAICompatUsesNamespacedProviderKey(t *testin
 	}
 }
 
-func openAICompatClaudeAuth() *coreauth.Auth {
+func openAICompatCodexAuth() *coreauth.Auth {
 	return &coreauth.Auth{
-		ID:       "compat-claude",
+		ID:       "compat-codex",
 		Provider: "openai-compatibility",
-		Label:    "claude",
+		Label:    "codex",
 		Attributes: map[string]string{
-			"compat_name":  "claude",
-			"provider_key": "claude",
+			"compat_name":  "codex",
+			"provider_key": "codex",
 		},
 	}
 }

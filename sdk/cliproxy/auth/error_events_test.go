@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/redisqueue"
 )
 
@@ -97,42 +96,6 @@ func TestManagerMarkResultPublishesErrorEventAfterAuthStateUpdate(t *testing.T) 
 	}
 	if event.AuthStatus.Model.Quota == nil || !event.AuthStatus.Model.Quota.Exceeded || event.AuthStatus.Model.Quota.Reason != "quota" {
 		t.Fatalf("unexpected model quota: %+v", event.AuthStatus.Model.Quota)
-	}
-}
-
-func TestManagerMarkResultSkipsErrorEventInHomeMode(t *testing.T) {
-	withEnabledErrorQueue(t)
-	subscriber, unsubscribe := redisqueue.SubscribeErrors()
-	defer unsubscribe()
-
-	manager := NewManager(nil, nil, nil)
-	manager.SetConfig(&internalconfig.Config{Home: internalconfig.HomeConfig{Enabled: true}})
-	auth := &Auth{
-		ID:       "home-auth-error-event",
-		Provider: "codex",
-		Metadata: map[string]any{
-			"type": "codex",
-		},
-	}
-	if _, errRegister := manager.Register(WithSkipPersist(context.Background()), auth); errRegister != nil {
-		t.Fatalf("Register returned error: %v", errRegister)
-	}
-
-	manager.MarkResult(context.Background(), Result{
-		AuthID:   auth.ID,
-		Provider: "codex",
-		Model:    "gpt-5",
-		Success:  false,
-		Error: &Error{
-			Message:    "unauthorized",
-			HTTPStatus: http.StatusUnauthorized,
-		},
-	})
-
-	select {
-	case got := <-subscriber:
-		t.Fatalf("received home-mode error event %q, want none", string(got))
-	default:
 	}
 }
 

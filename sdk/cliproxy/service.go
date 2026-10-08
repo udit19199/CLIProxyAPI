@@ -6,19 +6,14 @@ package cliproxy
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/api"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/home"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/homeplugins"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/pluginhost"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v8/sdk/access"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executionregistry"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
-	sdkpluginstore "github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginstore"
 )
 
 // Service wraps the proxy server lifecycle so external programs can embed the CLI proxy.
@@ -101,29 +96,9 @@ type Service struct {
 	// shutdownOnce ensures shutdown is called only once.
 	shutdownOnce sync.Once
 
-	homeLifecycleMu              sync.Mutex
-	homeOwnershipMu              sync.Mutex
-	homeConfigCommitMu           sync.Mutex
-	homeConfigStageHook          func()
-	homeConfigCommitHook         func()
-	homeConfigRuntimeHook        func()
 	applyPprofConfigContextFn    func(context.Context, *config.Config) bool
 	updateServerClientsContextFn func(context.Context, *config.Config) bool
-	homeSupervisor               *homeSubscriberSupervisor
-	homeMu                       sync.Mutex
-	homeGeneration               uint64
-	homeClient                   *home.Client
-	homeRegistry                 *executionregistry.Registry
-	homeDispatchBundle           *coreauth.HomeDispatchBundle
-	homeDrainBound               time.Duration
-	homeCancel                   context.CancelFunc
 	runCancel                    context.CancelFunc
-	homeLogForwarder             homeLogForwarder
-	homeLogForwarderClient       *home.Client
-	homePluginSyncMu             sync.Mutex
-	homePluginSyncKey            string
-	homePluginSyncFetch          func(context.Context, sdkpluginstore.PluginSyncRequest) (sdkpluginstore.PluginSyncResponse, error)
-	homePluginDeleteTask         func(context.Context, *config.Config, home.PluginTask) homeplugins.SyncReport
 }
 
 // SetResultPolicy sets an execution result policy on the underlying core auth manager.
