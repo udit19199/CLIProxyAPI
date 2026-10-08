@@ -850,10 +850,6 @@ oauth:
   # Provider options below apply to OAuth/file-backed credentials.
   # API-key credentials use their own group/key options.
   providers:
-    aistudio:
-      # When true, enable authentication for the WebSocket API (/v1/ws).
-      ws-auth: true
-
     # Codex provider behavior.
     codex:
       # Terminate and relay Codex Live WebRTC audio and DataChannel traffic in this process.

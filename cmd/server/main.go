@@ -146,7 +146,7 @@ func main() {
 	flag.BoolVar(&tuiMode, "tui", false, "Start with terminal management UI")
 	flag.BoolVar(&standalone, "standalone", false, "In TUI mode, start an embedded local server")
 	flag.StringVar(&managementBaseURL, "management-base-url", "", "Base URL of remote management API for TUI client mode (e.g. https://proxy.example.com)")
-	flag.BoolVar(&localModel, "local-model", false, "Use embedded model catalogs unless models.catalog, models.codex-catalog, or models.devin-catalog explicitly overrides the source")
+	flag.BoolVar(&localModel, "local-model", false, "Use embedded model catalogs unless models.catalog or models.codex-catalog explicitly overrides the source")
 
 	flag.CommandLine.Usage = func() {
 		out := flag.CommandLine.Output()
