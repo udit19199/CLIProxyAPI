@@ -13,7 +13,6 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/homeplugins"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/pluginhost"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/wsrelay"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v8/sdk/access"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -69,9 +68,6 @@ type Service struct {
 	// pprofServer manages the optional pprof HTTP debug server.
 	pprofServer *pprofServer
 
-	// discoveryManager manages local network mDNS / DNS-SD service advertising.
-	discoveryManager *discoveryAdvertiserManager
-
 	// serverErr channel for server startup/shutdown errors.
 	serverErr chan error
 
@@ -104,9 +100,6 @@ type Service struct {
 
 	// shutdownOnce ensures shutdown is called only once.
 	shutdownOnce sync.Once
-
-	// wsGateway manages websocket Gemini providers.
-	wsGateway *wsrelay.Manager
 
 	homeLifecycleMu              sync.Mutex
 	homeOwnershipMu              sync.Mutex

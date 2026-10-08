@@ -116,7 +116,6 @@ func (s *Service) Run(ctx context.Context) error {
 
 	// legacy clients removed; no caches to refresh
 
-	s.ensureWebsocketGateway()
 	if homeEnabled {
 		s.registerAvailableExecutors(ctx, executorRegistrationOptions{
 			includeBaseline: true,
@@ -140,26 +139,6 @@ func (s *Service) Run(ctx context.Context) error {
 		s.startHomeSubscriber(ctx)
 	}
 
-	if s.server != nil && s.wsGateway != nil {
-		s.server.AttachWebsocketRoute(s.wsGateway.Path(), s.wsGateway.Handler())
-		s.server.SetWebsocketAuthChangeHandler(func(oldEnabled, newEnabled bool) {
-			if oldEnabled == newEnabled {
-				return
-			}
-			if !oldEnabled && newEnabled {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if errStop := s.wsGateway.Stop(ctx); errStop != nil {
-					log.Warnf("failed to reset websocket connections after ws-auth change %t -> %t: %v", oldEnabled, newEnabled, errStop)
-					return
-				}
-				log.Debugf("ws-auth enabled; existing websocket sessions terminated to enforce authentication")
-				return
-			}
-			log.Debugf("ws-auth disabled; existing websocket sessions remain connected")
-		})
-	}
-
 	if s.hooks.OnBeforeStart != nil {
 		s.hooks.OnBeforeStart(s.cfg)
 	}
@@ -177,7 +156,6 @@ func (s *Service) Run(ctx context.Context) error {
 	fmt.Printf("API server started successfully on: %s:%d\n", s.cfg.Host, s.cfg.Port)
 
 	s.applyPprofConfig(s.cfg)
-	s.applyDiscoveryConfig(s.cfg)
 
 	if s.hooks.OnAfterStart != nil {
 		s.hooks.OnAfterStart(s)
@@ -305,14 +283,6 @@ func (s *Service) Shutdown(ctx context.Context) error {
 				shutdownErr = err
 			}
 		}
-		if s.wsGateway != nil {
-			if err := s.wsGateway.Stop(ctx); err != nil {
-				log.Errorf("failed to stop websocket gateway: %v", err)
-				if shutdownErr == nil {
-					shutdownErr = err
-				}
-			}
-		}
 		if s.authQueueStop != nil {
 			s.authQueueStop()
 			s.authQueueStop = nil
@@ -322,13 +292,6 @@ func (s *Service) Shutdown(ctx context.Context) error {
 			log.Errorf("failed to stop pprof server: %v", errShutdownPprof)
 			if shutdownErr == nil {
 				shutdownErr = errShutdownPprof
-			}
-		}
-
-		if errShutdownDiscovery := s.shutdownDiscovery(); errShutdownDiscovery != nil {
-			log.Errorf("failed to stop discovery advertiser: %v", errShutdownDiscovery)
-			if shutdownErr == nil {
-				shutdownErr = errShutdownDiscovery
 			}
 		}
 

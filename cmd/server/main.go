@@ -63,37 +63,7 @@ func shouldEnableExampleAPIKeySafeMode(cfg *config.Config, commandMode, cloudCon
 // It parses command-line flags, loads configuration, and starts the appropriate
 // service based on the provided flags (login, codex-login, or server mode).
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "discover" {
-		discoverFlags := flag.NewFlagSet("discover", flag.ExitOnError)
-		timeoutSec := discoverFlags.Int("timeout", 3, "Discovery timeout in seconds")
-		jsonOut := discoverFlags.Bool("json", false, "Output in JSON format")
-		serviceType := discoverFlags.String("service-type", "", "DNS-SD service type (default _ai-gateway._tcp)")
-		configPathFlag := discoverFlags.String("config", DefaultConfigPath, "Configure File Path")
-		var include, exclude []string
-		discoverFlags.Func("include", "Comma-separated interface names to scan (overrides default physical LAN filter)", appendCSV(&include))
-		discoverFlags.Func("exclude", "Comma-separated interface names to skip", appendCSV(&exclude))
-		_ = discoverFlags.Parse(os.Args[2:])
-		if !*jsonOut {
-			fmt.Fprintf(os.Stderr, "CLIProxyAPI Version: %s, Commit: %s, BuiltAt: %s\n", buildinfo.Version, buildinfo.Commit, buildinfo.BuildDate)
-		}
-		cfgInclude, cfgExclude := cmd.LoadDiscoveryScanFilters(*configPathFlag)
-		include, exclude = cmd.ResolveDiscoveryInterfaceFilters(include, exclude, cfgInclude, cfgExclude)
-		code := cmd.DoDiscoverWithOptions(cmd.DiscoverOptions{
-			Timeout:     time.Duration(*timeoutSec) * time.Second,
-			JSONOutput:  *jsonOut,
-			ServiceType: *serviceType,
-			Include:     include,
-			Exclude:     exclude,
-		})
-		os.Exit(code)
-	}
-
-	// For legacy --discover-json flag or JSON requests, keep stdout clean
-	isJSONDiscover := argvEnablesBoolFlag(os.Args[1:], "discover-json")
-	isDiscoverMode := isJSONDiscover || argvEnablesBoolFlag(os.Args[1:], "discover")
-	if !isJSONDiscover {
-		fmt.Printf("CLIProxyAPI Version: %s, Commit: %s, BuiltAt: %s\n", buildinfo.Version, buildinfo.Commit, buildinfo.BuildDate)
-	}
+	fmt.Printf("CLIProxyAPI Version: %s, Commit: %s, BuiltAt: %s\n", buildinfo.Version, buildinfo.Commit, buildinfo.BuildDate)
 
 	// Command-line flags to control the application's behavior.
 	var codexLogin bool
@@ -102,12 +72,6 @@ func main() {
 	var noBrowser bool
 	var oauthCallbackPort int
 	var xaiLogin bool
-	var discoverGateways bool
-	var discoverTimeout int
-	var discoverJSON bool
-	var discoverServiceType string
-	var discoverInclude []string
-	var discoverExclude []string
 	var configPath string
 	var password string
 	var homeJWT string
@@ -121,12 +85,6 @@ func main() {
 	flag.BoolVar(&noBrowser, "no-browser", false, "Don't open browser automatically for OAuth")
 	flag.IntVar(&oauthCallbackPort, "oauth-callback-port", 0, "Override OAuth callback port (defaults to provider-specific port)")
 	flag.BoolVar(&xaiLogin, "xai-login", false, "Login to xAI using OAuth")
-	flag.BoolVar(&discoverGateways, "discover", false, "Discover local AI gateways and CPA instances on the LAN")
-	flag.IntVar(&discoverTimeout, "discover-timeout", 3, "Timeout in seconds for LAN discovery (default 3s)")
-	flag.BoolVar(&discoverJSON, "discover-json", false, "Output discovered gateways in JSON format")
-	flag.StringVar(&discoverServiceType, "discover-service-type", "", "DNS-SD service type for LAN discovery (default _ai-gateway._tcp)")
-	flag.Func("discover-include", "Comma-separated interface names to scan during LAN discovery", appendCSV(&discoverInclude))
-	flag.Func("discover-exclude", "Comma-separated interface names to skip during LAN discovery", appendCSV(&discoverExclude))
 	flag.StringVar(&configPath, "config", DefaultConfigPath, "Configure File Path")
 	flag.StringVar(&password, "password", "", "")
 	flag.StringVar(&homeJWT, "home-jwt", "", "Home control plane JWT for mTLS certificate bootstrap and connection")
@@ -161,28 +119,13 @@ func main() {
 	}
 
 	pluginHost := pluginhost.New()
-	if !isDiscoverMode {
-		if bootstrapCfg := loadPluginBootstrapConfig(pluginBootstrapConfigPath(os.Args[1:], DefaultConfigPath)); bootstrapCfg != nil {
-			pluginHost.ApplyConfig(context.Background(), bootstrapCfg)
-			pluginHost.RegisterCommandLineFlags(context.Background(), flag.CommandLine)
-		}
+	if bootstrapCfg := loadPluginBootstrapConfig(pluginBootstrapConfigPath(os.Args[1:], DefaultConfigPath)); bootstrapCfg != nil {
+		pluginHost.ApplyConfig(context.Background(), bootstrapCfg)
+		pluginHost.RegisterCommandLineFlags(context.Background(), flag.CommandLine)
 	}
 
 	// Parse the command-line flags.
 	flag.Parse()
-
-	if discoverGateways || discoverJSON {
-		cfgInclude, cfgExclude := cmd.LoadDiscoveryScanFilters(configPath)
-		include, exclude := cmd.ResolveDiscoveryInterfaceFilters(discoverInclude, discoverExclude, cfgInclude, cfgExclude)
-		code := cmd.DoDiscoverWithOptions(cmd.DiscoverOptions{
-			Timeout:     time.Duration(discoverTimeout) * time.Second,
-			JSONOutput:  discoverJSON,
-			ServiceType: discoverServiceType,
-			Include:     include,
-			Exclude:     exclude,
-		})
-		os.Exit(code)
-	}
 
 	// Core application variables.
 	var err error
@@ -536,13 +479,6 @@ func loadPluginBootstrapConfig(path string) *config.Config {
 	return cfg
 }
 
-func appendCSV(dst *[]string) func(string) error {
-	return func(raw string) error {
-		*dst = append(*dst, cmd.ParseInterfaceList(raw)...)
-		return nil
-	}
-}
-
 func argvEnablesBoolFlag(args []string, name string) bool {
 	enabled := false
 	for i := 0; i < len(args); i++ {
@@ -574,7 +510,7 @@ func argvFlagConsumesValue(name string) bool {
 	switch name {
 	case "codex-login", "codex-device-login", "claude-login", "no-browser",
 		"xai-login",
-		"discover", "discover-json", "home-disable-cluster-discovery",
+		"home-disable-cluster-discovery",
 		"local-model":
 		return false
 	default:
