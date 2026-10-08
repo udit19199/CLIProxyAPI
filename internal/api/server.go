@@ -20,7 +20,6 @@ import (
 	"github.com/gin-gonic/gin"
 	managementHandlers "github.com/router-for-me/CLIProxyAPI/v8/internal/api/handlers/management"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/api/middleware"
-	codexlive "github.com/router-for-me/CLIProxyAPI/v8/internal/client/codex/live"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/githubauth"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
@@ -52,8 +51,7 @@ type Server struct {
 	muxHTTPListener *muxListener
 
 	// handlers contains the API handlers for processing requests.
-	handlers         *handlers.BaseAPIHandler
-	codexLiveHandler *codexlive.Handler
+	handlers *handlers.BaseAPIHandler
 
 	// cfg holds the current server configuration.
 	cfgMu sync.RWMutex
@@ -439,9 +437,6 @@ func (s *Server) Stop(ctx context.Context) error {
 		if errors.Is(errCloseServer, http.ErrServerClosed) || errors.Is(errCloseServer, net.ErrClosed) {
 			errCloseServer = nil
 		}
-	}
-	if s.codexLiveHandler != nil {
-		s.codexLiveHandler.Close()
 	}
 	if errCloseServer != nil {
 		return fmt.Errorf("failed to shutdown HTTP server: %v", errCloseServer)

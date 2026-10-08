@@ -8,7 +8,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -31,7 +30,6 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/safemode"
 	_ "github.com/router-for-me/CLIProxyAPI/v8/internal/translator"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/tui"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -54,11 +52,8 @@ func init() {
 	buildinfo.BuildDate = BuildDate
 }
 
-func shouldEnableExampleAPIKeySafeMode(cfg *config.Config, commandMode, tuiMode, standalone, cloudConfigMissing, homeMode bool) bool {
+func shouldEnableExampleAPIKeySafeMode(cfg *config.Config, commandMode, cloudConfigMissing, homeMode bool) bool {
 	if cfg == nil || commandMode || homeMode || cloudConfigMissing {
-		return false
-	}
-	if tuiMode && !standalone {
 		return false
 	}
 	return safemode.HasExampleAPIKeys(cfg.APIKeys)
@@ -117,9 +112,6 @@ func main() {
 	var password string
 	var homeJWT string
 	var homeDisableClusterDiscovery bool
-	var tuiMode bool
-	var standalone bool
-	var managementBaseURL string
 	var localModel bool
 
 	// Define command-line flags for different operation modes.
@@ -139,9 +131,6 @@ func main() {
 	flag.StringVar(&password, "password", "", "")
 	flag.StringVar(&homeJWT, "home-jwt", "", "Home control plane JWT for mTLS certificate bootstrap and connection")
 	flag.BoolVar(&homeDisableClusterDiscovery, "home-disable-cluster-discovery", false, "Disable Home CLUSTER NODES discovery and keep using the configured -home-jwt address")
-	flag.BoolVar(&tuiMode, "tui", false, "Start with terminal management UI")
-	flag.BoolVar(&standalone, "standalone", false, "In TUI mode, start an embedded local server")
-	flag.StringVar(&managementBaseURL, "management-base-url", "", "Base URL of remote management API for TUI client mode (e.g. https://proxy.example.com)")
 	flag.BoolVar(&localModel, "local-model", false, "Use embedded model catalogs unless models.catalog or models.codex-catalog explicitly overrides the source")
 
 	flag.CommandLine.Usage = func() {
@@ -419,7 +408,7 @@ func main() {
 
 	cloudConfigMissing := isCloudDeploy && !configFileExists
 	homeMode := configLoadedFromHome || (cfg != nil && cfg.Home.Enabled)
-	exampleAPIKeySafeMode := shouldEnableExampleAPIKeySafeMode(cfg, commandMode, tuiMode, standalone, cloudConfigMissing, homeMode)
+	exampleAPIKeySafeMode := shouldEnableExampleAPIKeySafeMode(cfg, commandMode, cloudConfigMissing, homeMode)
 	serverOptions := []api.ServerOption(nil)
 	if exampleAPIKeySafeMode {
 		matches := safemode.ExampleAPIKeys(cfg.APIKeys)
@@ -481,111 +470,14 @@ func main() {
 			cmd.WaitForCloudDeploy()
 			return
 		}
-		if localModel && (!tuiMode || standalone) {
+		if localModel {
 			log.Info("Local model mode: using embedded catalogs unless an explicit catalog source is configured")
 		}
-		if tuiMode {
-			if standalone {
-				// Standalone mode: start an embedded local server and connect TUI client to it.
-				managementasset.StartAutoUpdater(context.Background(), configFilePath)
-				registry.SetLocalModelCatalogs(localModel)
-				hook := tui.NewLogHook(2000)
-				hook.SetFormatter(&logging.LogFormatter{})
-				log.AddHook(hook)
-
-				origStdout := os.Stdout
-				origStderr := os.Stderr
-				origLogOutput := log.StandardLogger().Out
-				log.SetOutput(io.Discard)
-
-				devNull, errOpenDevNull := os.Open(os.DevNull)
-				if errOpenDevNull == nil {
-					os.Stdout = devNull
-					os.Stderr = devNull
-				}
-
-				restoreIO := func() {
-					os.Stdout = origStdout
-					os.Stderr = origStderr
-					log.SetOutput(origLogOutput)
-					if devNull != nil {
-						_ = devNull.Close()
-					}
-				}
-
-				localMgmtPassword := fmt.Sprintf("tui-%d-%d", os.Getpid(), time.Now().UnixNano())
-				if password == "" {
-					password = localMgmtPassword
-				}
-
-				cancel, done := cmd.StartServiceBackgroundWithPluginHost(cfg, configFilePath, password, pluginHost, serverOptions...)
-
-				client := tui.NewClient(cfg.Port, password)
-				ready := false
-				backoff := 100 * time.Millisecond
-				for i := 0; i < 30; i++ {
-					if _, errGetConfig := client.GetConfig(); errGetConfig == nil {
-						ready = true
-						break
-					}
-					time.Sleep(backoff)
-					if backoff < time.Second {
-						backoff = time.Duration(float64(backoff) * 1.5)
-					}
-				}
-
-				if !ready {
-					restoreIO()
-					cancel()
-					<-done
-					fmt.Fprintf(os.Stderr, "TUI error: embedded server is not ready\n")
-					return
-				}
-
-				if errRun := tui.Run(cfg.Port, password, hook, origStdout); errRun != nil {
-					restoreIO()
-					fmt.Fprintf(os.Stderr, "TUI error: %v\n", errRun)
-				} else {
-					restoreIO()
-				}
-
-				cancel()
-				<-done
-			} else {
-				// Default TUI mode: pure management client.
-				// The proxy server must already be running (locally or remotely).
-				baseURL := resolveManagementBaseURL(managementBaseURL, cfg)
-				if errRun := tui.RunWithBaseURL(baseURL, password, nil, os.Stdout); errRun != nil {
-					fmt.Fprintf(os.Stderr, "TUI error: %v\n", errRun)
-				}
-			}
-		} else {
-			// Start the main proxy service
-			managementasset.StartAutoUpdater(context.Background(), configFilePath)
-			registry.SetLocalModelCatalogs(localModel)
-			cmd.StartServiceWithPluginHost(cfg, configFilePath, password, pluginHost, serverOptions...)
-		}
+		// Start the main proxy service
+		managementasset.StartAutoUpdater(context.Background(), configFilePath)
+		registry.SetLocalModelCatalogs(localModel)
+		cmd.StartServiceWithPluginHost(cfg, configFilePath, password, pluginHost, serverOptions...)
 	}
-}
-
-// resolveManagementBaseURL determines the management API base URL for TUI client mode.
-// Priority: command-line flag > config file remote-management.base-url > default localhost.
-func resolveManagementBaseURL(flagURL string, cfg *config.Config) string {
-	baseURL := strings.TrimSpace(flagURL)
-	if baseURL != "" {
-		return baseURL
-	}
-	if cfg != nil {
-		baseURL = strings.TrimSpace(cfg.RemoteManagement.BaseURL)
-		if baseURL != "" {
-			return baseURL
-		}
-	}
-	port := 8317
-	if cfg != nil && cfg.Port > 0 {
-		port = cfg.Port
-	}
-	return fmt.Sprintf("http://127.0.0.1:%d", port)
 }
 
 func pluginBootstrapConfigPath(args []string, defaultPath string) string {
@@ -683,7 +575,7 @@ func argvFlagConsumesValue(name string) bool {
 	case "codex-login", "codex-device-login", "claude-login", "no-browser",
 		"xai-login",
 		"discover", "discover-json", "home-disable-cluster-discovery",
-		"tui", "standalone", "local-model":
+		"local-model":
 		return false
 	default:
 		return name != ""

@@ -162,11 +162,6 @@ func (s *Server) UpdateClientsContext(ctx context.Context, cfg *config.Config) b
 	s.cfgMu.Lock()
 	s.cfg = cfg
 	s.cfgMu.Unlock()
-	if s.codexLiveHandler != nil {
-		if errUpdate := s.codexLiveHandler.UpdateConfig(cfg); errUpdate != nil {
-			log.WithError(errUpdate).Error("failed to update Codex Live media relay configuration")
-		}
-	}
 	s.wsAuthEnabled.Store(cfg.WebsocketAuth)
 	if oldCfg != nil && s.wsAuthChanged != nil && oldCfg.WebsocketAuth != cfg.WebsocketAuth {
 		s.wsAuthChanged(oldCfg.WebsocketAuth, cfg.WebsocketAuth)
