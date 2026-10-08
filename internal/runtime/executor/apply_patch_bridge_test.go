@@ -70,8 +70,6 @@ func applyPatchTestFrames(protocol, name string) (string, string) {
 		first := fmt.Sprintf("data: {\"type\":\"response.created\",\"response\":{\"id\":\"r1\"}}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"a1\",\"call_id\":\"c1\",\"name\":%q,\"arguments\":\"\"}}\n\ndata: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"a1\",\"delta\":%q}\n\n", name, applyPatchTestPartial)
 		last := fmt.Sprintf("data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"a1\",\"delta\":%q}\n\ndata: {\"type\":\"response.function_call_arguments.done\",\"output_index\":0,\"item_id\":\"a1\",\"arguments\":%q}\n\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":%s}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"status\":\"completed\",\"output\":[%s]}}\n\n", applyPatchTestRemainder, args, item, item)
 		return first, last
-	case "devin":
-		return string(task6DevinFrames(applyPatchTestPartial, false, "", name)), string(task6DevinFrames(applyPatchTestRemainder, false, `{}`, name))
 	case "gemini", "antigravity":
 		first := `{"responseId":"r1","candidates":[{"content":{"parts":[{"text":"preparing"}]}}]}`
 		last := fmt.Sprintf(`{"responseId":"r1","candidates":[{"content":{"parts":[{"functionCall":{"name":%q,"args":%s}}]},"finishReason":"STOP"}]}`, name, args)
@@ -193,9 +191,7 @@ func TestApplyPatchBridgeLiveHTTPPreviewMatrix(t *testing.T) {
 		snapshot           bool
 	}{
 		{"custom-compat", "chat", false}, {"claude", "claude", false}, {"claude-oauth", "claude", false},
-		{"gemini-interactions", "interactions", false}, {"devin", "devin", false},
-		{"xai", "responses", false}, {"meta", "responses", false}, {"kimi", "responses", false},
-		{"gemini", "gemini", true}, {"vertex", "gemini", true}, {"antigravity", "antigravity", true},
+		{"xai", "responses", false},
 	} {
 		t.Run(tc.provider, func(t *testing.T) {
 			release := make(chan struct{})
@@ -231,16 +227,11 @@ func TestApplyPatchBridgeLiveHTTPPreviewMatrix(t *testing.T) {
 			exec := task6Executor(tc.provider)
 			if tc.protocol == "responses" {
 				exec = task6RepairExecutor(tc.provider)
-			} else if tc.provider == "devin" {
-				exec = NewDevinExecutor(&config.Config{})
 			}
 			auth := &cliproxyauth.Auth{ID: t.Name(), Provider: exec.Identifier(), Attributes: map[string]string{"api_key": "test", "base_url": upstream.URL}}
 			if tc.provider == "claude-oauth" {
 				auth.Attributes["api_key"] = "sk-ant-oat-test"
 				auth.Metadata = map[string]any{"account_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
-			}
-			if tc.provider == "antigravity" {
-				auth.Metadata = map[string]any{"access_token": "test", "expires_in": 3600, "timestamp": "2099-01-01T00:00:00Z", "project_id": "test"}
 			}
 			gateway := newApplyPatchTestGateway(t, exec, auth)
 			// Catalog claims must be backed by the executor used by the POST below.
@@ -497,43 +488,6 @@ func TestApplyPatchBridgeOrdinaryFunctionControl(t *testing.T) {
 
 // Kimi selects its reused Chat and Claude executors for these ordinary clients.
 // Custom Responses clients select Kimi's Responses branch, covered by the HTTP matrix.
-func TestApplyPatchBridgeKimiReusedClientControls(t *testing.T) {
-	for _, source := range []sdktranslator.Format{sdktranslator.FormatOpenAI, sdktranslator.FormatClaude} {
-		t.Run(source.String(), func(t *testing.T) {
-			args := `{"input":"RAW_SECRET","extra":7}`
-			reply := applyPatchTestChatReply(args)
-			payload := []byte(`{"messages":[{"role":"user","content":"edit"}],"tools":[{"type":"function","function":{"name":"apply_patch","parameters":{"type":"object","properties":{"input":{"type":"string"},"extra":{"type":"integer"}}}}}]}`)
-			if source == sdktranslator.FormatClaude {
-				payload = []byte(`{"messages":[{"role":"user","content":"edit"}],"tools":[{"name":"apply_patch","input_schema":{"type":"object","properties":{"input":{"type":"string"},"extra":{"type":"integer"}}}}]}`)
-				reply = fmt.Sprintf(`{"id":"r1","type":"message","role":"assistant","content":[{"type":"tool_use","id":"c1","name":"apply_patch","input":%s}],"stop_reason":"tool_use"}`, args)
-			}
-			_, auth, bodies := newApplyPatchCompatTestExecutor(t, reply)
-			auth.Provider = "kimi"
-			exec := NewKimiExecutor(&config.Config{}).ForAPIKey()
-			response, errExecute := exec.Execute(t.Context(), auth, cliproxyexecutor.Request{Model: "kimi-k2.5", Payload: payload}, cliproxyexecutor.Options{SourceFormat: source, OriginalRequest: payload})
-			if errExecute != nil {
-				t.Fatal(errExecute)
-			}
-			body := <-bodies
-			tool := gjson.GetBytes(body, "tools.0.function")
-			parameters := "parameters"
-			if source == sdktranslator.FormatClaude {
-				tool, parameters = gjson.GetBytes(body, "tools.0"), "input_schema"
-			}
-			if !tool.Get(parameters+".properties.extra").Exists() || strings.Contains(tool.Get("description").String(), "*** Begin Patch") || bytes.Contains(response.Payload, []byte("custom_tool_call")) || !bytes.Contains(response.Payload, []byte("RAW_SECRET")) {
-				t.Fatalf("ordinary reused client was promoted or restricted: request=%s response=%s", body, response.Payload)
-			}
-			arguments := gjson.GetBytes(response.Payload, "choices.0.message.tool_calls.0.function.arguments").String()
-			if source == sdktranslator.FormatClaude {
-				arguments = gjson.GetBytes(response.Payload, "content.0.input").Raw
-			}
-			if !gjson.Valid(arguments) || gjson.Get(arguments, "extra").Int() != 7 {
-				t.Fatalf("ordinary function lost valid JSON: %s", response.Payload)
-			}
-		})
-	}
-}
-
 func applyPatchTestPreviewChunks(t *testing.T, chunks <-chan cliproxyexecutor.StreamChunk, unblock func()) []byte {
 	t.Helper()
 	var lifecycle applyPatchTestLifecycle

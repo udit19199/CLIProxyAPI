@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
-	kimiauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/kimi"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
@@ -229,24 +228,6 @@ func synthesizeFileAuths(ctx *SynthesisContext, fullPath string, data []byte) ([
 	coreauth.SetOAuthModelAliasesAttribute(a, perAccountModelAliases)
 	ApplyAuthExcludedModelsMeta(a, cfg, perAccountExcluded, "oauth")
 	applyFingerprintProfileAttribute(a, metadata)
-	// For Kimi auth files, preserve domain and base_url attributes.
-	if provider == "kimi" || provider == "kimi-ai" || provider == "kimi.ai" || provider == "kimi.com" {
-		if bu, ok := metadata["base_url"].(string); ok && strings.TrimSpace(bu) != "" {
-			a.Attributes["base_url"] = strings.TrimSpace(bu)
-		}
-		if dom, ok := metadata["domain"].(string); ok && strings.TrimSpace(dom) != "" {
-			a.Attributes["domain"] = strings.TrimSpace(dom)
-		}
-		resolvedDomain := kimiauth.ResolveKimiDomainFromAuth(a)
-		if a.Attributes["domain"] == "" {
-			a.Attributes["domain"] = resolvedDomain
-		} else {
-			a.Attributes["domain"] = kimiauth.NormalizeKimiDomain(a.Attributes["domain"])
-		}
-		if a.Attributes["base_url"] == "" {
-			a.Attributes["base_url"] = kimiauth.ResolveKimiAPIBaseURL(resolvedDomain)
-		}
-	}
 	// For codex auth files, extract plan_type from metadata or JWT id_token.
 	if provider == "codex" {
 		if ptRaw, ok := metadata["plan_type"].(string); ok && strings.TrimSpace(ptRaw) != "" {

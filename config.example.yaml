@@ -18,7 +18,6 @@ config-version: 8
 models:
   catalog: ""
   codex-catalog: ""
-  devin-catalog: ""
 
 # Listener, TLS, network discovery, and server operation.
 server:
@@ -451,134 +450,6 @@ upstream:
 
 # api-keys:
 #
-#   # Gemini API keys
-#
-#   gemini:
-#     - name: gemini-1
-#       priority: 0 # larger values take precedence when selecting credentials
-#       prefix: "test" # optional: require calls like "test/gemini-3-pro-preview" to target this credential
-#       disable-cooling: false # optional override: true disables cooling, false enables it; omit to inherit global
-#       request-retry: 3 # optional per-auth override; 0 disables additional rounds; omit or set < 0 to inherit global
-#       request-scoped-errors: # optional: custom rules to classify upstream errors by status and body patterns
-#         - status: 400        # HTTP status code to match
-#           match:             # optional: string contains matching
-#             - "maximum_context_length"
-#             - "context_length_exceeded"
-#           match-regexr:      # optional: regular expression matching
-#             - "maximum_context_length$"
-#             - "^context_length_exceeded"
-#           action: "stop"     # "stop" (return error, no cooling), "stop-and-cooldown" (return error and cool down),
-#                              # "continue" (try next credential, no cooling), "continue-and-cooldown" (try next credential and cool down)
-#       base-url: "https://generativelanguage.googleapis.com"
-#       headers:
-#         X-Custom-Header: "custom-value"
-#         # Values starting with "$" dynamically copy the header value from downstream client requests.
-#         # If the client did not send the specified header, the header is omitted.
-#         # X-Claude-Code-Session-Id: "$ABC" # copies client's "ABC" header
-#       proxy-url: "socks5://proxy.example.com:1080"
-#       # proxy-url: "direct" # optional: explicit direct connect for this credential
-#       models:
-#         - name: "gemini-2.5-flash" # upstream model name
-#           alias: "gemini-flash"    # client alias mapped to the upstream model
-#           display-name: "Gemini Flash" # optional catalog display name
-#           max-context-length: 1048576 # optional: override Codex client context window metadata
-#           is-compat: false             # optional: preserve thinking blocks with empty signatures for compatible upstreams
-#           thinking:                    # optional: exact thinking capability for this configured model
-#             levels: ["high", "medium", "low", "none", "auto"]
-#             # For budget-based models, replace levels with these capabilities:
-#             # min: 1024
-#             # max: 32768
-#             # zero-allowed: true
-#             # dynamic-allowed: true
-#       excluded-models:
-#         - "gemini-2.5-pro"     # exclude specific models from this provider (exact match)
-#         - "gemini-2.5-*"       # wildcard matching prefix (e.g. gemini-2.5-flash, gemini-2.5-pro)
-#         - "*-preview"          # wildcard matching suffix (e.g. gemini-3-pro-preview)
-#         - "*flash*"            # wildcard matching substring (e.g. gemini-2.5-flash-lite)
-#       keys:
-#         - api-key: "AIzaSy...01"
-#           weight: 5 # optional: weighted-round-robin share; omitted defaults to 1; maximum 1,000,000
-#         # A second key shares this group's endpoint, headers, and models.
-#         - api-key: "replace-with-second-gemini-key"
-#           weight: 2
-#           priority: null # inherit the group priority
-#           prefix: null # inherit the group prefix
-#           proxy-url: "direct" # override the group proxy for this key
-#           headers: null # inherit the complete group header map
-#           models: null # inherit the complete group model list
-#           excluded-models: [] # explicitly clear the inherited exclusions
-#           disable-cooling: false # an explicit false overrides a true group setting
-#           request-retry: 0 # explicitly disable additional rounds for this key
-#           request-scoped-errors: null # inherit the group rules
-#     - name: gemini-2
-#       keys:
-#         - api-key: "AIzaSy...02"
-#
-#   # Native Interactions API keys
-#   # These keys are used only for direct /v1beta/interactions execution. Regular api-keys.gemini entries still
-#   # send Gemini generateContent/streamGenerateContent requests when the client enters through the interactions API.
-#
-#   interactions:
-#     - name: interactions-1
-#       prefix: "native" # optional: require calls like "native/gemini-3-pro-preview" to target this credential
-#       disable-cooling: false # optional override: true disables cooling, false enables it; omit to inherit global
-#       request-retry: 3 # optional per-auth override; 0 disables additional rounds; omit or set < 0 to inherit global
-#       request-scoped-errors: # optional: custom rules to classify upstream errors by status and body patterns
-#         - status: 400
-#           match:
-#             - "invalid_argument"
-#           action: "continue"
-#       base-url: "https://generativelanguage.googleapis.com"
-#       headers:
-#         X-Custom-Header: "custom-value"
-#         # Values starting with "$" dynamically copy the header value from downstream client requests.
-#         # If the client did not send the specified header, the header is omitted.
-#         # X-Claude-Code-Session-Id: "$ABC" # copies client's "ABC" header
-#       proxy-url: "socks5://proxy.example.com:1080"
-#       # proxy-url: "direct" # optional: explicit direct connect for this credential
-#       models:
-#         - name: "gemini-2.5-flash" # upstream model name
-#           alias: "native-gemini-flash" # client alias mapped to the upstream model
-#           max-context-length: 1048576 # optional: override Codex client context window metadata
-#           is-compat: false             # optional: preserve thinking blocks with empty signatures for compatible upstreams
-#           thinking:                    # optional: exact thinking capability for this configured model
-#             levels: ["high", "medium", "low", "none", "auto"]
-#       excluded-models:
-#         - "gemini-2.5-pro"
-#       keys:
-#         - api-key: "AIzaSy...03"
-#           weight: 5 # optional: weighted-round-robin share; omitted defaults to 1; maximum 1,000,000
-#
-#   # Vertex API keys (Vertex-compatible endpoints, base-url is optional)
-#
-#   vertex:
-#     - name: vertex-1
-#       prefix: "test"                              # optional: require calls like "test/vertex-pro" to target this credential
-#       disable-cooling: false                       # optional override: true disables cooling, false enables it; omit to inherit global
-#       request-retry: 3                             # optional per-auth override; 0 disables additional rounds; omit or set < 0 to inherit global
-#       base-url: "https://example.com/api"         # optional, e.g. https://zenmux.ai/api; falls back to Google Vertex when omitted
-#       proxy-url: "socks5://proxy.example.com:1080" # optional per-key proxy override
-#       # proxy-url: "direct" # optional: explicit direct connect for this credential
-#       headers:
-#         X-Custom-Header: "custom-value"
-#         # Values starting with "$" dynamically copy the header value from downstream client requests.
-#         # If the client did not send the specified header, the header is omitted.
-#         # X-Claude-Code-Session-Id: "$ABC" # copies client's "ABC" header
-#       models:                                     # optional: map aliases to upstream model names
-#         - name: "gemini-2.5-flash"                # upstream model name
-#           alias: "vertex-flash"                   # client-visible alias
-#           display-name: "Vertex Flash"            # optional catalog display name
-#           thinking:                                # optional: exact thinking capability for this configured model
-#             levels: ["high", "medium", "low", "none", "auto"]
-#         - name: "gemini-2.5-pro"
-#           alias: "vertex-pro"
-#       excluded-models:                            # optional: models to exclude from listing
-#         - "imagen-3.0-generate-002"
-#         - "imagen-*"
-#       keys:
-#         - api-key: "vk-123..."                        # x-goog-api-key header
-#           weight: 5                                    # optional: weighted-round-robin share; omitted defaults to 1; maximum 1,000,000
-#
 #   # Codex API keys
 #
 #   codex:
@@ -778,25 +649,6 @@ upstream:
 #         - api-key: "xai-..."
 #           weight: 5 # optional: weighted-round-robin share; omitted defaults to 1; maximum 1,000,000
 #           websockets: true # optional: use the xAI upstream websocket transport for downstream websocket requests
-#
-#   # Meta API keys (Muse Code)
-#   # Uses the native Meta executor targeting https://api.meta.ai/v1.
-#
-#   meta:
-#     - name: meta-1
-#       prefix: "meta" # optional: require calls like "meta/muse-spark-1.3" to target this credential
-#       disable-cooling: false # optional override: true disables cooling, false enables it; omit to inherit global
-#       request-retry: 3 # optional per-auth override; 0 disables additional rounds; omit or set < 0 to inherit global
-#       base-url: "https://api.meta.ai/v1" # optional: defaults to https://api.meta.ai/v1
-#       proxy-url: "socks5://proxy.example.com:1080" # optional: per-key proxy override
-#       models:
-#         - name: "muse-spark-1.3" # upstream model name
-#           alias: "muse-latest"   # client alias mapped to the upstream model
-#       excluded-models:
-#         - "muse-spark-1.1"
-#       keys:
-#         - api-key: "..."
-#           weight: 5 # optional: weighted-round-robin share; omitted defaults to 1; maximum 1,000,000
 #
 #   # OpenAI compatibility providers
 #
@@ -1038,34 +890,6 @@ oauth:
       # header-defaults:
       #   user-agent: "codex_cli_rs/0.114.0 (Mac OS 14.2.0; x86_64) vscode/1.111.0"
       #   beta-features: "multi_agent"
-
-    # Antigravity provider behavior.
-    antigravity:
-      # sensitive-words:              # optional: words to obfuscate with zero-width characters in system instructions
-      #   - "API"
-      #   - "proxy"
-      # connection-pool:              # optional: upstream HTTP connection pool settings
-      #   enabled: false             # whether to enable connection pooling (default: false)
-      #   idle-conn-timeout: "30s"    # idle keep-alive timeout (default: 30s, capped at 210s)
-      #   max-idle-conns-per-host: 2  # max idle connections per host per credential (default: 2)
-      # Use credits as a last resort after free-tier Claude quota is exhausted.
-      antigravity-credits: true
-
-      # Signature cache validation for thinking blocks (Antigravity/Claude).
-      # When true (default), cached signatures are preferred and validated.
-      # When false, client signatures are used directly after normalization (bypass mode for testing).
-      # signature-cache-enabled: true
-
-      # Bypass mode signature validation strictness (only applies when signature cache is disabled).
-      # When true, validates full Claude protobuf tree (Field 2 -> Field 1 structure).
-      # When false (default), only checks R/E prefix + base64 + first byte 0x12.
-      # signature-bypass-strict: false
-
-    # Devin provider behavior.
-    # devin:
-    #   sensitive-words:             # optional: words to obfuscate with zero-width characters in system instructions and prompts
-    #     - "API"
-    #     - "proxy"
 
 # Image and video behavior.
 multimedia:

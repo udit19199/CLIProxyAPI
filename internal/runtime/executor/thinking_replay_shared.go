@@ -11,15 +11,12 @@ import (
 
 	internalcache "github.com/router-for-me/CLIProxyAPI/v8/internal/cache"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
-	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
-	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
-type kimiThinkingReplayScope struct {
+type thinkingReplayScope struct {
 	modelFamily   string
 	sessionKey    string
 	snapshot      internalcache.KimiThinkingReplaySnapshot
@@ -27,78 +24,11 @@ type kimiThinkingReplayScope struct {
 	replayApplied bool
 }
 
-func (s kimiThinkingReplayScope) valid() bool {
+func (s thinkingReplayScope) valid() bool {
 	return strings.TrimSpace(s.modelFamily) != "" && strings.TrimSpace(s.sessionKey) != ""
 }
 
-func kimiThinkingReplayModelFamily(model string) string {
-	baseModel := thinking.ParseSuffix(strings.TrimSpace(model)).ModelName
-	normalized := normalizeKimiUpstreamModel(baseModel)
-	switch normalized {
-	case "k3", "k3-256k":
-		return "k3"
-	default:
-		return normalized
-	}
-}
-
-func kimiThinkingReplayScopeFromRequest(ctx context.Context, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) kimiThinkingReplayScope {
-	sessionKey := codexReasoningReplaySessionKey(ctx, sdktranslator.FormatClaude, req, opts, req.Payload)
-	sessionKey = xaiReasoningReplayIsolateSessionKey(ctx, sessionKey)
-	return kimiThinkingReplayScope{
-		modelFamily: kimiThinkingReplayModelFamily(req.Model),
-		sessionKey:  sessionKey,
-	}
-}
-
-func prepareKimiThinkingReplayRequest(ctx context.Context, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Request, kimiThinkingReplayScope) {
-	scope := kimiThinkingReplayScopeFromRequest(ctx, req, opts)
-	if !scope.valid() {
-		return req, scope
-	}
-	content, snapshot, found, errGet := internalcache.GetKimiThinkingReplayWithSnapshotRequired(ctx, scope.modelFamily, scope.sessionKey)
-	scope.snapshot = snapshot
-	scope.cacheReady = errGet == nil
-	if errGet != nil {
-		log.Warnf("kimi thinking replay cache read failed: %v", errGet)
-		return req, scope
-	}
-	if !found {
-		return req, scope
-	}
-	updated, restored := restoreKimiThinkingReplayContent(req.Payload, content)
-	if restored {
-		req.Payload = updated
-		scope.replayApplied = true
-	}
-	return req, scope
-}
-
-func cacheKimiThinkingReplayResponse(ctx context.Context, scope kimiThinkingReplayScope, response []byte) {
-	if !scope.valid() || !scope.cacheReady {
-		return
-	}
-	content := gjson.GetBytes(response, "content")
-	if !content.IsArray() {
-		return
-	}
-	cacheKimiThinkingReplayContent(ctx, scope, []byte(content.Raw))
-}
-
-func cacheKimiThinkingReplayContent(ctx context.Context, scope kimiThinkingReplayScope, content []byte) {
-	if !scope.valid() || !scope.cacheReady {
-		return
-	}
-	if kimiThinkingReplayContentIsReplayable(content) {
-		if _, errReplace := internalcache.ReplaceKimiThinkingReplayIfUnchanged(ctx, scope.modelFamily, scope.sessionKey, scope.snapshot, content); errReplace != nil {
-			log.Warnf("kimi thinking replay cache replace failed: %v", errReplace)
-		}
-		return
-	}
-	clearKimiThinkingReplayContent(ctx, scope)
-}
-
-func shouldClearKimiThinkingReplayAfterError(err error) bool {
+func shouldClearThinkingReplayAfterError(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -110,16 +40,7 @@ func shouldClearKimiThinkingReplayAfterError(err error) bool {
 	return statusCode == 400 || statusCode == 422
 }
 
-func clearKimiThinkingReplayContent(ctx context.Context, scope kimiThinkingReplayScope) {
-	if !scope.valid() || !scope.cacheReady {
-		return
-	}
-	if _, errDelete := internalcache.DeleteKimiThinkingReplayIfUnchanged(ctx, scope.modelFamily, scope.sessionKey, scope.snapshot); errDelete != nil {
-		log.Warnf("kimi thinking replay cache delete failed: %v", errDelete)
-	}
-}
-
-func kimiThinkingReplayContentIsReplayable(content []byte) bool {
+func thinkingReplayContentIsReplayable(content []byte) bool {
 	root := gjson.ParseBytes(content)
 	if !root.IsArray() {
 		return false
@@ -141,8 +62,8 @@ func kimiThinkingReplayContentIsReplayable(content []byte) bool {
 	return hasSignedThinking && hasToolUse
 }
 
-func restoreKimiThinkingReplayContent(body, cachedContent []byte) ([]byte, bool) {
-	cachedParts, cachedOK := kimiNonThinkingContentParts(gjson.ParseBytes(cachedContent))
+func restoreThinkingReplayContent(body, cachedContent []byte) ([]byte, bool) {
+	cachedParts, cachedOK := replayNonThinkingContentParts(gjson.ParseBytes(cachedContent))
 	if !cachedOK {
 		return body, false
 	}
@@ -157,14 +78,14 @@ func restoreKimiThinkingReplayContent(body, cachedContent []byte) ([]byte, bool)
 			continue
 		}
 		currentContent := message.Get("content")
-		if kimiJSONEqual([]byte(currentContent.Raw), cachedContent) {
+		if replayJSONEqual([]byte(currentContent.Raw), cachedContent) {
 			return body, false
 		}
-		if kimiContentHasThinking(currentContent) {
+		if replayContentHasThinking(currentContent) {
 			continue
 		}
-		currentParts, currentOK := kimiNonThinkingContentParts(currentContent)
-		if !currentOK || !kimiCanonicalPartsEqual(currentParts, cachedParts) {
+		currentParts, currentOK := replayNonThinkingContentParts(currentContent)
+		if !currentOK || !replayCanonicalPartsEqual(currentParts, cachedParts) {
 			continue
 		}
 		updated, errSet := sjson.SetRawBytes(body, fmt.Sprintf("messages.%d.content", index), cachedContent)
@@ -176,7 +97,7 @@ func restoreKimiThinkingReplayContent(body, cachedContent []byte) ([]byte, bool)
 	return body, false
 }
 
-func kimiContentHasThinking(content gjson.Result) bool {
+func replayContentHasThinking(content gjson.Result) bool {
 	if !content.IsArray() {
 		return false
 	}
@@ -189,7 +110,7 @@ func kimiContentHasThinking(content gjson.Result) bool {
 	return false
 }
 
-func kimiNonThinkingContentParts(content gjson.Result) ([][]byte, bool) {
+func replayNonThinkingContentParts(content gjson.Result) ([][]byte, bool) {
 	if !content.IsArray() {
 		return nil, false
 	}
@@ -205,7 +126,7 @@ func kimiNonThinkingContentParts(content gjson.Result) ([][]byte, bool) {
 			}
 			hasToolUse = true
 		}
-		canonical, ok := kimiCanonicalJSON([]byte(part.Raw))
+		canonical, ok := replayCanonicalJSON([]byte(part.Raw))
 		if !ok {
 			return nil, false
 		}
@@ -214,7 +135,7 @@ func kimiNonThinkingContentParts(content gjson.Result) ([][]byte, bool) {
 	return parts, hasToolUse
 }
 
-func kimiCanonicalPartsEqual(left, right [][]byte) bool {
+func replayCanonicalPartsEqual(left, right [][]byte) bool {
 	if len(left) != len(right) {
 		return false
 	}
@@ -226,13 +147,13 @@ func kimiCanonicalPartsEqual(left, right [][]byte) bool {
 	return true
 }
 
-func kimiJSONEqual(left, right []byte) bool {
-	canonicalLeft, leftOK := kimiCanonicalJSON(left)
-	canonicalRight, rightOK := kimiCanonicalJSON(right)
+func replayJSONEqual(left, right []byte) bool {
+	canonicalLeft, leftOK := replayCanonicalJSON(left)
+	canonicalRight, rightOK := replayCanonicalJSON(right)
 	return leftOK && rightOK && bytes.Equal(canonicalLeft, canonicalRight)
 }
 
-func kimiCanonicalJSON(raw []byte) ([]byte, bool) {
+func replayCanonicalJSON(raw []byte) ([]byte, bool) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	var value any
@@ -246,7 +167,7 @@ func kimiCanonicalJSON(raw []byte) ([]byte, bool) {
 	return canonical, true
 }
 
-type kimiThinkingReplayStreamBlock struct {
+type replayStreamBlock struct {
 	raw                  []byte
 	text                 strings.Builder
 	thinking             strings.Builder
@@ -259,8 +180,8 @@ type kimiThinkingReplayStreamBlock struct {
 	finished             bool
 }
 
-type kimiThinkingReplayStreamAccumulator struct {
-	blocks        map[int]*kimiThinkingReplayStreamBlock
+type replayStreamAccumulator struct {
+	blocks        map[int]*replayStreamBlock
 	observed      bool
 	complete      bool
 	upstreamError bool
@@ -268,11 +189,11 @@ type kimiThinkingReplayStreamAccumulator struct {
 	bytesUsed     int
 }
 
-func newKimiThinkingReplayStreamAccumulator() *kimiThinkingReplayStreamAccumulator {
-	return &kimiThinkingReplayStreamAccumulator{blocks: make(map[int]*kimiThinkingReplayStreamBlock)}
+func newReplayStreamAccumulator() *replayStreamAccumulator {
+	return &replayStreamAccumulator{blocks: make(map[int]*replayStreamBlock)}
 }
 
-func (a *kimiThinkingReplayStreamAccumulator) observe(chunk []byte) {
+func (a *replayStreamAccumulator) observe(chunk []byte) {
 	for _, line := range bytes.Split(chunk, []byte("\n")) {
 		line = bytes.TrimSpace(line)
 		if !bytes.HasPrefix(line, []byte("data:")) {
@@ -311,7 +232,7 @@ func (a *kimiThinkingReplayStreamAccumulator) observe(chunk []byte) {
 	}
 }
 
-func (a *kimiThinkingReplayStreamAccumulator) observeBlockStart(root gjson.Result) {
+func (a *replayStreamAccumulator) observeBlockStart(root gjson.Result) {
 	index := int(root.Get("index").Int())
 	block := root.Get("content_block")
 	if !block.IsObject() || len(a.blocks) >= internalcache.KimiThinkingReplayCacheMaxBlocksPerEntry {
@@ -326,10 +247,10 @@ func (a *kimiThinkingReplayStreamAccumulator) observeBlockStart(root gjson.Resul
 	if !a.reserveBytes(len(raw)) {
 		return
 	}
-	a.blocks[index] = &kimiThinkingReplayStreamBlock{raw: append([]byte(nil), raw...)}
+	a.blocks[index] = &replayStreamBlock{raw: append([]byte(nil), raw...)}
 }
 
-func (a *kimiThinkingReplayStreamAccumulator) observeBlockDelta(root gjson.Result) {
+func (a *replayStreamAccumulator) observeBlockDelta(root gjson.Result) {
 	index := int(root.Get("index").Int())
 	block, ok := a.blocks[index]
 	if !ok {
@@ -355,7 +276,7 @@ func (a *kimiThinkingReplayStreamAccumulator) observeBlockDelta(root gjson.Resul
 	}
 }
 
-func (a *kimiThinkingReplayStreamAccumulator) appendBlockText(block *kimiThinkingReplayStreamBlock, builder *strings.Builder, initialized *bool, path, suffix string) {
+func (a *replayStreamAccumulator) appendBlockText(block *replayStreamBlock, builder *strings.Builder, initialized *bool, path, suffix string) {
 	if !*initialized {
 		initial := gjson.GetBytes(block.raw, path).String()
 		if !a.reserveBytes(len(initial)) {
@@ -369,7 +290,7 @@ func (a *kimiThinkingReplayStreamAccumulator) appendBlockText(block *kimiThinkin
 	}
 }
 
-func (a *kimiThinkingReplayStreamAccumulator) finishBlock(index int) {
+func (a *replayStreamAccumulator) finishBlock(index int) {
 	block, ok := a.blocks[index]
 	if !ok {
 		a.abandon()
@@ -382,7 +303,7 @@ func (a *kimiThinkingReplayStreamAccumulator) finishBlock(index int) {
 	block.finished = true
 }
 
-func (a *kimiThinkingReplayStreamAccumulator) reserveBytes(count int) bool {
+func (a *replayStreamAccumulator) reserveBytes(count int) bool {
 	if count < 0 || a.bytesUsed > internalcache.KimiThinkingReplayCacheMaxBytesPerEntry-count {
 		a.abandon()
 		return false
@@ -391,13 +312,13 @@ func (a *kimiThinkingReplayStreamAccumulator) reserveBytes(count int) bool {
 	return true
 }
 
-func (a *kimiThinkingReplayStreamAccumulator) abandon() {
+func (a *replayStreamAccumulator) abandon() {
 	a.abandoned = true
 	a.blocks = nil
 	a.bytesUsed = 0
 }
 
-func (a *kimiThinkingReplayStreamAccumulator) content() ([]byte, bool) {
+func (a *replayStreamAccumulator) content() ([]byte, bool) {
 	if !a.observed || !a.complete || a.upstreamError || a.abandoned {
 		return nil, false
 	}
@@ -441,17 +362,17 @@ func (a *kimiThinkingReplayStreamAccumulator) content() ([]byte, bool) {
 	return content, true
 }
 
-type thinkingReplayContentCacheFunc func(context.Context, kimiThinkingReplayScope, []byte)
-type thinkingReplayContentClearFunc func(context.Context, kimiThinkingReplayScope)
+type thinkingReplayContentCacheFunc func(context.Context, thinkingReplayScope, []byte)
+type thinkingReplayContentClearFunc func(context.Context, thinkingReplayScope)
 
-func wrapThinkingReplayStream(ctx context.Context, result *cliproxyexecutor.StreamResult, scope kimiThinkingReplayScope, cacheContent thinkingReplayContentCacheFunc, clearContent thinkingReplayContentClearFunc) *cliproxyexecutor.StreamResult {
+func wrapThinkingReplayStream(ctx context.Context, result *cliproxyexecutor.StreamResult, scope thinkingReplayScope, cacheContent thinkingReplayContentCacheFunc, clearContent thinkingReplayContentClearFunc) *cliproxyexecutor.StreamResult {
 	if result == nil || !scope.valid() {
 		return result
 	}
 	out := make(chan cliproxyexecutor.StreamChunk)
 	go func() {
 		defer close(out)
-		accumulator := newKimiThinkingReplayStreamAccumulator()
+		accumulator := newReplayStreamAccumulator()
 		hasError := false
 		for chunk := range result.Chunks {
 			if chunk.Err != nil {
@@ -477,8 +398,4 @@ func wrapThinkingReplayStream(ctx context.Context, result *cliproxyexecutor.Stre
 		}
 	}()
 	return &cliproxyexecutor.StreamResult{Headers: result.Headers.Clone(), Chunks: out}
-}
-
-func wrapKimiThinkingReplayStream(ctx context.Context, result *cliproxyexecutor.StreamResult, scope kimiThinkingReplayScope) *cliproxyexecutor.StreamResult {
-	return wrapThinkingReplayStream(ctx, result, scope, cacheKimiThinkingReplayContent, clearKimiThinkingReplayContent)
 }

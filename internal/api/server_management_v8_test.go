@@ -131,10 +131,8 @@ func TestManagementV8IndependentContract(t *testing.T) {
 		{http.MethodGet, "/v8/management/oauth/auth-url", `{"error":"provider is required"}`, http.StatusBadRequest},
 		{http.MethodGet, "/v8/management/oauth/auth-url?provider=%20", `{"error":"provider is required"}`, http.StatusBadRequest},
 		{http.MethodGet, "/v8/management/oauth/auth-url?provider=unknown", `{"error":"provider_not_found"}`, http.StatusNotFound},
-		{http.MethodPost, "/v8/management/oauth/import", `{"error":"provider is required"}`, http.StatusBadRequest},
+		{http.MethodPost, "/v8/management/oauth/import", `{"error":"provider_not_found"}`, http.StatusNotFound},
 		{http.MethodPost, "/v8/management/oauth/import?provider=codex", `{"error":"provider_not_found"}`, http.StatusNotFound},
-		{http.MethodPost, "/v8/management/oauth/import?provider=vertex", `{"error":"file required"}`, http.StatusBadRequest},
-		{http.MethodPost, "/v0/management/vertex/import", `{"error":"file required"}`, http.StatusBadRequest},
 	} {
 		if got := request(tc.method, tc.url, "", tc.status); got != tc.body {
 			t.Fatalf("%s: body=%s, want %s", tc.url, got, tc.body)

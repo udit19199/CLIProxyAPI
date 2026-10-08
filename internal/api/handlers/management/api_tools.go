@@ -14,7 +14,6 @@ import (
 	"github.com/gin-gonic/gin"
 	xaiauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/xai"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
 	log "github.com/sirupsen/logrus"
@@ -274,16 +273,6 @@ func (h *Handler) resolveTokenForAuth(ctx context.Context, auth *coreauth.Auth, 
 		return "", nil
 	}
 
-	if strings.EqualFold(strings.TrimSpace(auth.Provider), "antigravity") {
-		token, errToken := h.refreshAntigravityOAuthAccessToken(ctx, auth, requestProxyURL)
-		return token, errToken
-	}
-
-	if strings.EqualFold(strings.TrimSpace(auth.Provider), "meta") {
-		token, errToken := h.resolveMetaToken(ctx, auth, requestProxyURL)
-		return token, errToken
-	}
-
 	if strings.EqualFold(strings.TrimSpace(auth.Provider), "xai") {
 		token, errToken := h.resolveXAIToken(ctx, auth, requestProxyURL)
 		return token, errToken
@@ -524,179 +513,6 @@ func xaiOAuthTokenNeedsRefresh(auth *coreauth.Auth) bool {
 	}
 
 	return !temp.HasValidAccessToken(now)
-}
-
-func (h *Handler) refreshAntigravityOAuthAccessToken(ctx context.Context, auth *coreauth.Auth, requestProxyURL string) (string, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if auth == nil {
-		return "", nil
-	}
-
-	metadata := auth.Metadata
-	if len(metadata) == 0 {
-		return "", fmt.Errorf("antigravity oauth metadata missing")
-	}
-
-	current := strings.TrimSpace(tokenValueFromMetadata(metadata))
-	if current != "" && !antigravityTokenNeedsRefresh(metadata) {
-		return current, nil
-	}
-
-	refreshToken := stringValue(metadata, "refresh_token")
-	if refreshToken == "" {
-		return "", fmt.Errorf("antigravity refresh token missing")
-	}
-
-	tokenURL := strings.TrimSpace(antigravityOAuthTokenURL)
-	if tokenURL == "" {
-		tokenURL = "https://oauth2.googleapis.com/token"
-	}
-	form := url.Values{}
-	form.Set("client_id", antigravityOAuthClientID)
-	form.Set("client_secret", antigravityOAuthClientSecret)
-	form.Set("grant_type", "refresh_token")
-	form.Set("refresh_token", refreshToken)
-
-	req, errReq := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
-	if errReq != nil {
-		return "", errReq
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	httpClient := &http.Client{
-		Timeout:   defaultAPICallTimeout,
-		Transport: h.apiCallTransport(auth, requestProxyURL),
-	}
-	resp, errDo := httpClient.Do(req)
-	if errDo != nil {
-		return "", errDo
-	}
-	defer func() {
-		if errClose := resp.Body.Close(); errClose != nil {
-			log.Errorf("response body close error: %v", errClose)
-		}
-	}()
-
-	bodyBytes, errRead := io.ReadAll(resp.Body)
-	if errRead != nil {
-		return "", errRead
-	}
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return "", fmt.Errorf("antigravity oauth token refresh failed: status %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
-	}
-
-	var tokenResp struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int64  `json:"expires_in"`
-		TokenType    string `json:"token_type"`
-	}
-	if errUnmarshal := json.Unmarshal(bodyBytes, &tokenResp); errUnmarshal != nil {
-		return "", errUnmarshal
-	}
-
-	if strings.TrimSpace(tokenResp.AccessToken) == "" {
-		return "", fmt.Errorf("antigravity oauth token refresh returned empty access_token")
-	}
-
-	if auth.Metadata == nil {
-		auth.Metadata = make(map[string]any)
-	}
-	now := time.Now()
-	auth.Metadata["access_token"] = strings.TrimSpace(tokenResp.AccessToken)
-	if strings.TrimSpace(tokenResp.RefreshToken) != "" {
-		auth.Metadata["refresh_token"] = strings.TrimSpace(tokenResp.RefreshToken)
-	}
-	if tokenResp.ExpiresIn > 0 {
-		auth.Metadata["expires_in"] = tokenResp.ExpiresIn
-		auth.Metadata["timestamp"] = now.UnixMilli()
-		auth.Metadata["expired"] = now.Add(time.Duration(tokenResp.ExpiresIn) * time.Second).Format(time.RFC3339)
-	}
-	auth.Metadata["type"] = "antigravity"
-
-	if h != nil && h.authManager != nil {
-		auth.LastRefreshedAt = now
-		auth.UpdatedAt = now
-		_, _ = h.authManager.Update(ctx, auth)
-	}
-
-	return strings.TrimSpace(tokenResp.AccessToken), nil
-}
-
-func metaTokenFromAuth(auth *coreauth.Auth) string {
-	if auth == nil {
-		return ""
-	}
-	if auth.Metadata != nil {
-		if k, ok := auth.Metadata["api_key"].(string); ok && strings.TrimSpace(k) != "" && !strings.HasPrefix(strings.TrimSpace(k), "dca:") {
-			return strings.TrimSpace(k)
-		}
-		if t, ok := auth.Metadata["access_token"].(string); ok && strings.TrimSpace(t) != "" && !strings.HasPrefix(strings.TrimSpace(t), "dca:") {
-			return strings.TrimSpace(t)
-		}
-	}
-	if auth.Attributes != nil {
-		if k := strings.TrimSpace(auth.Attributes["api_key"]); k != "" && !strings.HasPrefix(k, "dca:") {
-			return k
-		}
-		if t := strings.TrimSpace(auth.Attributes["access_token"]); t != "" && !strings.HasPrefix(t, "dca:") {
-			return t
-		}
-	}
-	return ""
-}
-
-// metaManagementPreparer applies the tool's proxy override only to acquisition.
-// The saved credential retains its configured proxy.
-type metaManagementPreparer struct {
-	executor *executor.MetaExecutor
-	proxyURL string
-}
-
-func (p metaManagementPreparer) ShouldPrepareRequestAuth(auth *coreauth.Auth) bool {
-	return p.executor.ShouldPrepareRequestAuth(auth)
-}
-
-func (p metaManagementPreparer) PrepareRequestAuth(ctx context.Context, auth *coreauth.Auth) (*coreauth.Auth, error) {
-	proxyURL := auth.ProxyURL
-	if strings.TrimSpace(p.proxyURL) != "" {
-		auth.ProxyURL = p.proxyURL
-	}
-	updated, err := p.executor.PrepareRequestAuth(ctx, auth)
-	if updated != nil {
-		updated.ProxyURL = proxyURL
-	}
-	return updated, err
-}
-
-func (h *Handler) resolveMetaToken(ctx context.Context, auth *coreauth.Auth, requestProxyURL string) (string, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if auth == nil {
-		return "", nil
-	}
-	if token := metaTokenFromAuth(auth); token != "" {
-		return token, nil
-	}
-	var cfg *config.Config
-	if h != nil {
-		cfg = h.cfg
-	}
-	preparer := metaManagementPreparer{executor: executor.NewMetaExecutor(cfg), proxyURL: requestProxyURL}
-	if !preparer.ShouldPrepareRequestAuth(auth) {
-		return "", nil
-	}
-	if h == nil || h.authManager == nil || auth.ID == "" {
-		return "", fmt.Errorf("meta token mint requires a registered credential")
-	}
-	updated, err := h.authManager.PrepareRequestAuth(ctx, preparer, auth)
-	if err != nil {
-		return "", err
-	}
-	return metaTokenFromAuth(updated), nil
 }
 
 func antigravityTokenNeedsRefresh(metadata map[string]any) bool {

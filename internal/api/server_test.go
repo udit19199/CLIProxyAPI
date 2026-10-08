@@ -42,7 +42,6 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	log "github.com/sirupsen/logrus"
 	logtest "github.com/sirupsen/logrus/hooks/test"
-	"gopkg.in/yaml.v3"
 )
 
 type codexSearchCaptureExecutor struct {
@@ -2295,126 +2294,6 @@ func TestModelsWithClientVersionReturnsCodexCatalog(t *testing.T) {
 	}
 }
 
-func TestModelsWithClientVersion_DevinDisplayName(t *testing.T) {
-	devinClientID := "test-devin-client-version-models"
-	openaiClientID := "test-openai-client-version-models"
-	modelRegistry := registry.GetGlobalRegistry()
-	modelRegistry.RegisterClient(devinClientID, "devin", []*registry.ModelInfo{
-		{
-			ID:          "devin/swe-2",
-			Object:      "model",
-			OwnedBy:     "cognition",
-			Type:        "devin",
-			DisplayName: "SWE-2",
-		},
-		{
-			ID:          "devin/gpt-6-astra",
-			Object:      "model",
-			OwnedBy:     "openai",
-			Type:        "devin",
-			DisplayName: "GPT-6 Astra",
-		},
-	})
-	modelRegistry.RegisterClient(openaiClientID, "openai", []*registry.ModelInfo{
-		{
-			ID:          "standard-openai-model",
-			Object:      "model",
-			OwnedBy:     "openai",
-			Type:        "openai",
-			DisplayName: "Standard Model",
-		},
-	})
-	t.Cleanup(func() {
-		modelRegistry.UnregisterClient(devinClientID)
-		modelRegistry.UnregisterClient(openaiClientID)
-	})
-
-	server := newTestServer(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=0.153.4", nil)
-	req.Header.Set("Authorization", "Bearer test-key")
-
-	rr := httptest.NewRecorder()
-	server.engine.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
-	}
-
-	var resp struct {
-		Models []map[string]any `json:"models"`
-	}
-	if errUnmarshal := json.Unmarshal(rr.Body.Bytes(), &resp); errUnmarshal != nil {
-		t.Fatalf("failed to parse response JSON: %v", errUnmarshal)
-	}
-
-	bySlug := make(map[string]map[string]any, len(resp.Models))
-	for _, m := range resp.Models {
-		if slug, ok := m["slug"].(string); ok {
-			bySlug[slug] = m
-		}
-	}
-
-	swe2, ok := bySlug["devin/swe-2"]
-	if !ok {
-		t.Fatal("expected devin/swe-2 in models list")
-	}
-	if got, _ := swe2["display_name"].(string); got != "SWE-2 (Devin)" {
-		t.Fatalf("devin/swe-2 display_name = %q, want SWE-2 (Devin)", got)
-	}
-
-	astra, ok := bySlug["devin/gpt-6-astra"]
-	if !ok {
-		t.Fatal("expected devin/gpt-6-astra in models list")
-	}
-	if got, _ := astra["display_name"].(string); got != "GPT-6 Astra (Devin)" {
-		t.Fatalf("devin/gpt-6-astra display_name = %q, want GPT-6 Astra (Devin)", got)
-	}
-
-	std, ok := bySlug["standard-openai-model"]
-	if !ok {
-		t.Fatal("expected standard-openai-model in models list")
-	}
-	if got, _ := std["display_name"].(string); got != "Standard Model" {
-		t.Fatalf("standard-openai-model display_name = %q, want Standard Model", got)
-	}
-}
-
-func TestHomeCodexClientModels_DevinDisplayName(t *testing.T) {
-	entries := []homeModelEntry{
-		{
-			id:          "devin/swe-2",
-			displayName: "SWE-2",
-			providers:   []string{"devin"},
-		},
-		{
-			id:          "home-regular",
-			displayName: "Home Regular",
-			providers:   []string{"openai"},
-		},
-	}
-	models := make([]map[string]any, 0, len(entries))
-	for _, entry := range entries {
-		models = append(models, formatHomeCodexModel(entry))
-	}
-	resp := codexmodels.BuildResponseForClient(models, nil, false, "0.153.4")
-	catalog, ok := resp["models"].([]map[string]any)
-	if !ok {
-		t.Fatalf("expected []map[string]any, got %T", resp["models"])
-	}
-	bySlug := make(map[string]map[string]any, len(catalog))
-	for _, m := range catalog {
-		slug, _ := m["slug"].(string)
-		bySlug[slug] = m
-	}
-	if got, _ := bySlug["devin/swe-2"]["display_name"].(string); got != "SWE-2 (Devin)" {
-		t.Fatalf("devin/swe-2 display_name = %q, want SWE-2 (Devin)", got)
-	}
-	if got, _ := bySlug["home-regular"]["display_name"].(string); got != "Home Regular" {
-		t.Fatalf("home-regular display_name = %q, want Home Regular", got)
-	}
-}
-
 func TestCodexClientModelsEndpoint_FiltersMaxAndUltraForOlderClientVersion(t *testing.T) {
 	clientID := "codex-client-version-filter-test"
 	modelRegistry := registry.GetGlobalRegistry()
@@ -2927,54 +2806,6 @@ func TestInteractionsRouteRegistered(t *testing.T) {
 	server.engine.ServeHTTP(rr, req)
 	if rr.Code == http.StatusNotFound {
 		t.Fatalf("status = %d, want route registered; body=%s", rr.Code, rr.Body.String())
-	}
-}
-
-func TestUpdateClientsContext_AntigravityConnectionPoolPurgesTransports(t *testing.T) {
-	server := newTestServer(t)
-
-	enabled := true
-	disabled := false
-
-	cfg1 := *server.cfg
-	cfg1.Antigravity.ConnectionPool.Enabled = &enabled
-	cfg1.Antigravity.ConnectionPool.IdleConnTimeout = "30s"
-	server.oldConfigYaml, _ = yaml.Marshal(&cfg1)
-
-	// Pre-populate the cache before reload
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	testAuth := &auth.Auth{
-		ID:         "hot-reload-test-auth",
-		Provider:   "antigravity",
-		Attributes: map[string]string{"base_url": srv.URL},
-		Metadata: map[string]any{
-			"access_token": "token",
-			"project_id":   "proj",
-			"expired":      time.Now().Add(time.Hour).Format(time.RFC3339),
-		},
-	}
-	exec := executor.NewAntigravityExecutor(&cfg1)
-	req := httptest.NewRequest(http.MethodGet, srv.URL, nil)
-	_, _ = exec.HttpRequest(context.Background(), testAuth, req)
-
-	if executor.AntigravityTransportsLen() == 0 {
-		t.Fatal("expected Antigravity transports to be cached before hot reload")
-	}
-
-	cfg2 := cfg1
-	cfg2.Antigravity.ConnectionPool.Enabled = &disabled
-	cfg2.Antigravity.ConnectionPool.IdleConnTimeout = "10s"
-
-	if ok := server.UpdateClientsContext(context.Background(), &cfg2); !ok {
-		t.Fatal("UpdateClientsContext returned false")
-	}
-
-	if got := executor.AntigravityTransportsLen(); got != 0 {
-		t.Fatalf("AntigravityTransportsLen() after reload = %d, want 0", got)
 	}
 }
 

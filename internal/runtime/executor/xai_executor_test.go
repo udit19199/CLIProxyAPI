@@ -7443,7 +7443,7 @@ func TestXAIApplyPatchDispatcherEvidenceLifecycle(t *testing.T) {
 }
 
 func TestApplyPatchResponsesExecutorLocalFailures(t *testing.T) {
-	for _, provider := range []string{"xai", "meta", "kimi"} {
+	for _, provider := range []string{"xai"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%v", provider, stream), func(t *testing.T) {
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -7467,12 +7467,6 @@ func TestApplyPatchResponsesExecutorLocalFailures(t *testing.T) {
 				switch provider {
 				case "xai":
 					exec = NewXAIExecutor(&config.Config{})
-				case "meta":
-					exec = NewMetaExecutor(&config.Config{})
-					model = "muse-spark-1.3"
-				case "kimi":
-					exec = NewKimiExecutor(&config.Config{})
-					model = "kimi-k2.5"
 				}
 				auth := &cliproxyauth.Auth{ID: "task6-owned", Provider: provider, Attributes: map[string]string{"api_key": "test", "base_url": server.URL}}
 				checkUsage := task6CaptureFailureUsage(t, auth.ID)

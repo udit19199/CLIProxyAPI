@@ -11,17 +11,13 @@ import (
 	sdkconfig "github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 )
 
-func TestRequestProxyOverridesCredentialProxyForWebsocketAndAntigravity(t *testing.T) {
+func TestRequestProxyOverridesCredentialProxyForWebsocket(t *testing.T) {
 	t.Parallel()
 
 	const requestProxy = "http://request-proxy.example:8081"
 	ctx := cliproxyexecutor.WithRequestProxyURL(context.Background(), requestProxy)
 	cfg := &config.Config{SDKConfig: sdkconfig.SDKConfig{ProxyURL: "http://global-proxy.example:8082"}}
 	auth := &cliproxyauth.Auth{ProxyURL: "http://auth-proxy.example:8080"}
-
-	if got := antigravityProxyURL(ctx, cfg, auth); got != requestProxy {
-		t.Fatalf("antigravity proxy = %q, want %q", got, requestProxy)
-	}
 
 	dialer := newProxyAwareWebsocketDialer(ctx, cfg, auth)
 	if dialer.Proxy == nil {

@@ -168,9 +168,6 @@ func publishCatalogBytes(data []byte) ([]string, error) {
 		return nil, errValidate
 	}
 	old := getModels()
-	if len(parsed.Meta) == 0 && old != nil {
-		parsed.Meta = old.Meta
-	}
 	changed := detectChangedProviders(old, &parsed)
 	modelsCatalogStore.mu.Lock()
 	modelsCatalogStore.data = &parsed
@@ -186,16 +183,6 @@ var codexCatalogUpdater = &catalogUpdater{
 	fetch: catalogFetcher(embeddedCodexClientModelsJSON, codexClientModelsURLs, ValidateCodexClientModelsJSON),
 	publish: func(data []byte) ([]string, error) {
 		_, errLoad := loadCodexClientModelsFromBytes(data, "catalog")
-		return nil, errLoad
-	},
-}
-var devinCatalogUpdater = &catalogUpdater{
-	fetch: catalogFetcher(embeddedDevinModelsJSON, devinModelsURLs, validateDevinCatalogBytes),
-	publish: func(data []byte) ([]string, error) {
-		changed, errLoad := loadDevinModelsFromBytes(data, "catalog")
-		if errLoad == nil && changed {
-			return []string{"devin"}, nil
-		}
 		return nil, errLoad
 	},
 }
@@ -240,7 +227,6 @@ func configureCatalogs(ctx context.Context, sources CatalogSources, local, home 
 	sources = effectiveCatalogSources(sources, local, home)
 	generalCatalogUpdater.configure(ctx, sources.Catalog)
 	codexCatalogUpdater.configure(ctx, sources.CodexCatalog)
-	devinCatalogUpdater.configure(ctx, sources.DevinCatalog)
 }
 
 func effectiveCatalogSources(sources CatalogSources, local, home bool) CatalogSources {
@@ -251,15 +237,8 @@ func effectiveCatalogSources(sources CatalogSources, local, home bool) CatalogSo
 		return source
 	}
 	general := selectSource(sources.Catalog)
-	devin := selectSource(sources.DevinCatalog)
 	if home {
 		general = "disabled"
-		devin = "disabled"
 	}
-	return CatalogSources{Catalog: general, CodexCatalog: selectSource(sources.CodexCatalog), DevinCatalog: devin}
-}
-
-func validateDevinCatalogBytes(data []byte) error {
-	_, errValidate := ValidateDevinModelsJSON(data)
-	return errValidate
+	return CatalogSources{Catalog: general, CodexCatalog: selectSource(sources.CodexCatalog)}
 }

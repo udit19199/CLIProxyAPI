@@ -20,7 +20,6 @@ func TestCatalogFetcherSources(t *testing.T) {
 	}{
 		{"general", embeddedModelsJSON, validateCatalogBytes},
 		{"codex", embeddedCodexClientModelsJSON, ValidateCodexClientModelsJSON},
-		{"devin", embeddedDevinModelsJSON, validateDevinCatalogBytes},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var officialHits atomic.Int32

@@ -7,14 +7,14 @@ import (
 )
 
 func TestCatalogPolicyHotReload(t *testing.T) {
-	oldGeneral, oldCodex, oldDevin := generalCatalogUpdater, codexCatalogUpdater, devinCatalogUpdater
+	oldGeneral, oldCodex := generalCatalogUpdater, codexCatalogUpdater
 	catalogRuntime.Lock()
 	oldCtx, oldLocal := catalogRuntime.ctx, catalogRuntime.local
 	catalogRuntime.Unlock()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() {
 		cancel()
-		generalCatalogUpdater, codexCatalogUpdater, devinCatalogUpdater = oldGeneral, oldCodex, oldDevin
+		generalCatalogUpdater, codexCatalogUpdater = oldGeneral, oldCodex
 		catalogRuntime.Lock()
 		catalogRuntime.ctx, catalogRuntime.local = oldCtx, oldLocal
 		catalogRuntime.Unlock()
@@ -26,10 +26,9 @@ func TestCatalogPolicyHotReload(t *testing.T) {
 			publish: func(data []byte) ([]string, error) { published <- string(data); return nil, nil },
 		}, published
 	}
-	var general, codex, devin <-chan string
+	var general, codex <-chan string
 	generalCatalogUpdater, general = newUpdater()
 	codexCatalogUpdater, codex = newUpdater()
-	devinCatalogUpdater, devin = newUpdater()
 	awaitSource := func(ch <-chan string, want string) {
 		t.Helper()
 		select {
@@ -45,7 +44,6 @@ func TestCatalogPolicyHotReload(t *testing.T) {
 	StartModelCatalogUpdaters(ctx, CatalogSources{Catalog: "https://example.com/general"}, false)
 	awaitSource(general, "https://example.com/general")
 	awaitSource(codex, embeddedCatalogSource)
-	awaitSource(devin, embeddedCatalogSource)
 	UpdateModelCatalogSources(CatalogSources{CodexCatalog: "https://example.com/codex"}, false)
 	awaitSource(general, embeddedCatalogSource)
 	awaitSource(codex, "https://example.com/codex")
@@ -56,12 +54,6 @@ func TestCatalogPolicyHotReload(t *testing.T) {
 	generalCatalogUpdater.mu.Unlock()
 	if source != "disabled" {
 		t.Fatal("Home allowed general catalog")
-	}
-	devinCatalogUpdater.mu.Lock()
-	source = devinCatalogUpdater.source
-	devinCatalogUpdater.mu.Unlock()
-	if source != "disabled" {
-		t.Fatal("Home allowed Devin catalog")
 	}
 	UpdateModelCatalogSources(CatalogSources{}, false)
 	awaitSource(general, embeddedCatalogSource)

@@ -60,17 +60,13 @@ func task6RepairSSE(events [][]byte) string {
 
 func task6RepairExecutor(provider string) cliproxyauth.ProviderExecutor {
 	switch provider {
-	case "meta":
-		return NewMetaExecutor(&config.Config{})
-	case "kimi":
-		return NewKimiExecutor(&config.Config{})
 	default:
 		return NewXAIExecutor(&config.Config{})
 	}
 }
 
 func TestApplyPatchRepairResponsesSourceTerminalHTTP(t *testing.T) {
-	for _, provider := range []string{"xai", "meta", "kimi"} {
+	for _, provider := range []string{"xai"} {
 		for _, mode := range []string{"args-eof", "item-eof", "empty", "done", "response.completed", "response.incomplete", "response.done"} {
 			t.Run(provider+"/"+mode, func(t *testing.T) {
 				body := task6RepairSSE(task6RepairSource(mode))
@@ -452,7 +448,7 @@ func TestApplyPatchRepairGatewayInitializesGinTestMode(t *testing.T) {
 }
 
 func TestApplyPatchRepairResponsesSourceTerminalNonStream(t *testing.T) {
-	for _, provider := range []string{"xai", "meta", "kimi"} {
+	for _, provider := range []string{"xai"} {
 		for _, mode := range []string{"args-eof", "item-eof", "empty", "done"} {
 			if provider == "kimi" && mode != "empty" {
 				// Kimi's non-stream endpoint returns JSON, not a buffered SSE response.
@@ -604,7 +600,7 @@ func TestApplyPatchRepairXAIWebsocketCompactionUsage(t *testing.T) {
 }
 
 func TestApplyPatchRepairOrdinaryEmptyHTTPPassthrough(t *testing.T) {
-	for _, provider := range []string{"xai", "meta", "kimi"} {
+	for _, provider := range []string{"xai"} {
 		t.Run(provider, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 			defer server.Close()

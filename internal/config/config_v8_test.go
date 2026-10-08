@@ -24,13 +24,13 @@ func TestV8ExampleLoadsAndRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load active v8 example: %v", err)
 	}
-	if active.Port != 8317 || len(active.APIKeys) != 3 || active.RequestRetry != 3 || !active.QuotaExceeded.AntigravityCredits {
+	if active.Port != 8317 || len(active.APIKeys) != 3 || active.RequestRetry != 3 {
 		t.Fatal("v8 template lost its default configuration")
 	}
 	if err = ValidateV8Config(example); err != nil {
 		t.Fatalf("active template must use the v8 layout: %v", err)
 	}
-	for _, count := range []int{len(active.GeminiKey), len(active.CodexKey), len(active.ClaudeKey), len(active.VertexCompatAPIKey), len(active.XAIKey), len(active.MetaKey), len(active.InteractionsKey), len(active.OpenAICompatibility)} {
+	for _, count := range []int{len(active.CodexKey), len(active.ClaudeKey), len(active.XAIKey), len(active.OpenAICompatibility)} {
 		if count != 0 {
 			t.Fatal("placeholder upstream credentials must remain commented")
 		}
@@ -67,10 +67,10 @@ func TestV8ExampleLoadsAndRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Port != 8317 || len(cfg.APIKeys) != 3 || len(cfg.GeminiKey) != 3 || len(cfg.CodexKey) != 1 || len(cfg.ClaudeKey) != 2 || len(cfg.VertexCompatAPIKey) != 1 || len(cfg.XAIKey) != 1 || len(cfg.MetaKey) != 1 || len(cfg.InteractionsKey) != 1 || len(cfg.OpenAICompatibility) != 1 {
+	if cfg.Port != 8317 || len(cfg.APIKeys) != 3 || len(cfg.CodexKey) != 1 || len(cfg.ClaudeKey) != 2 || len(cfg.XAIKey) != 1 || len(cfg.OpenAICompatibility) != 1 {
 		t.Fatal("v8 example fields did not reach runtime config")
 	}
-	if !cfg.QuotaExceeded.AntigravityCredits || cfg.QuotaExceeded.SwitchProject || cfg.QuotaExceeded.SwitchPreviewModel {
+	if cfg.QuotaExceeded.SwitchProject || cfg.QuotaExceeded.SwitchPreviewModel {
 		t.Fatal("legacy-only quota examples must remain commented")
 	}
 	path := filepath.Join(t.TempDir(), "config.yaml")
@@ -99,7 +99,7 @@ func TestV8ExampleLoadsAndRoundTrips(t *testing.T) {
 	if err = yaml.Unmarshal(saved, &node); err != nil {
 		t.Fatal(err)
 	}
-	if groups := yamlPath(node.Content[0], "api-keys.gemini"); groups == nil || len(groups.Content) != 2 || yamlPath(groups.Content[0], "name").Value != "gemini-1" {
+	if groups := yamlPath(node.Content[0], "api-keys.codex"); groups == nil || len(groups.Content) != 1 || yamlPath(groups.Content[0], "name").Value != "codex-1" {
 		t.Fatal("save lost upstream group identity")
 	}
 }
