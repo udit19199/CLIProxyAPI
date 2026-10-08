@@ -6,29 +6,8 @@ import (
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
-	sdkAuth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 )
-
-type cooldownProviderTokenStore struct {
-	cooldownStore coreauth.CooldownStateStore
-}
-
-func (s *cooldownProviderTokenStore) List(context.Context) ([]*coreauth.Auth, error) {
-	return nil, nil
-}
-
-func (s *cooldownProviderTokenStore) Save(context.Context, *coreauth.Auth) (string, error) {
-	return "", nil
-}
-
-func (s *cooldownProviderTokenStore) Delete(context.Context, string) error {
-	return nil
-}
-
-func (s *cooldownProviderTokenStore) CooldownStateStore() coreauth.CooldownStateStore {
-	return s.cooldownStore
-}
 
 type serviceCooldownStateStore struct{}
 
@@ -40,16 +19,30 @@ func (*serviceCooldownStateStore) Save(context.Context, []coreauth.CooldownState
 	return nil
 }
 
-func TestResolveCooldownStateStoreUsesCapturedBackendProvider(t *testing.T) {
-	originalStore := sdkAuth.GetTokenStore()
-	t.Cleanup(func() {
-		sdkAuth.RegisterTokenStore(originalStore)
-	})
-
-	providedStore := &serviceCooldownStateStore{}
-	sdkAuth.RegisterTokenStore(&cooldownProviderTokenStore{cooldownStore: providedStore})
+func TestResolveCooldownStateStoreUsesExplicitOverride(t *testing.T) {
 	cfg := &config.Config{
 		AuthDir:            t.TempDir(),
+		SaveCooldownStatus: true,
+	}
+	override := &serviceCooldownStateStore{}
+	service, errBuild := NewBuilder().
+		WithConfig(cfg).
+		WithConfigPath(filepath.Join(t.TempDir(), "config.yaml")).
+		WithCooldownStateStore(override).
+		Build()
+	if errBuild != nil {
+		t.Fatalf("Build() error = %v", errBuild)
+	}
+
+	if got := service.resolveCooldownStateStore(cfg); got != override {
+		t.Fatalf("resolveCooldownStateStore() = %T, want the explicit override", got)
+	}
+}
+
+func TestResolveCooldownStateStoreFallsBackToAuthDir(t *testing.T) {
+	authDir := t.TempDir()
+	cfg := &config.Config{
+		AuthDir:            authDir,
 		SaveCooldownStatus: true,
 	}
 	service, errBuild := NewBuilder().
@@ -60,9 +53,29 @@ func TestResolveCooldownStateStoreUsesCapturedBackendProvider(t *testing.T) {
 		t.Fatalf("Build() error = %v", errBuild)
 	}
 
-	sdkAuth.RegisterTokenStore(&cooldownProviderTokenStore{cooldownStore: &serviceCooldownStateStore{}})
 	got := service.resolveCooldownStateStore(cfg)
-	if got != providedStore {
-		t.Fatalf("resolveCooldownStateStore() = %T, want captured backend-provided store", got)
+	if got == nil {
+		t.Fatal("resolveCooldownStateStore() = nil, want the auth-dir file store")
+	}
+	if _, ok := got.(*coreauth.FileCooldownStateStore); !ok {
+		t.Fatalf("resolveCooldownStateStore() = %T, want *coreauth.FileCooldownStateStore", got)
+	}
+}
+
+func TestResolveCooldownStateStoreNilWhenCooldownPersistenceDisabled(t *testing.T) {
+	cfg := &config.Config{
+		AuthDir:            t.TempDir(),
+		SaveCooldownStatus: false,
+	}
+	service, errBuild := NewBuilder().
+		WithConfig(cfg).
+		WithConfigPath(filepath.Join(t.TempDir(), "config.yaml")).
+		Build()
+	if errBuild != nil {
+		t.Fatalf("Build() error = %v", errBuild)
+	}
+
+	if got := service.resolveCooldownStateStore(cfg); got != nil {
+		t.Fatalf("resolveCooldownStateStore() = %T, want nil when SaveCooldownStatus is false", got)
 	}
 }

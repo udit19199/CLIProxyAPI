@@ -28,8 +28,6 @@ func TestSetLatestReleaseRequestHeaders(t *testing.T) {
 			if tt.githubToken == "" {
 				t.Setenv("github_token", "")
 			}
-			t.Setenv("GITSTORE_GIT_TOKEN", "")
-			t.Setenv("GITSTORE_GIT_URL", "")
 
 			req := httptest.NewRequest(http.MethodGet, latestReleaseURL, nil)
 			setLatestReleaseRequestHeaders(req)

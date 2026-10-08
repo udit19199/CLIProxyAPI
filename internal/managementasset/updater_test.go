@@ -16,8 +16,6 @@ func (f githubAssetTransport) RoundTrip(req *http.Request) (*http.Response, erro
 
 func TestFetchLatestAssetSetsGitHubAuthorization(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "asset-token")
-	t.Setenv("GITSTORE_GIT_TOKEN", "")
-	t.Setenv("GITSTORE_GIT_URL", "")
 
 	var authorization string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -54,8 +52,6 @@ func TestFetchLatestAssetSetsGitHubAuthorization(t *testing.T) {
 func TestFetchLatestAssetOmitsAuthorizationWithoutToken(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("github_token", "")
-	t.Setenv("GITSTORE_GIT_TOKEN", "")
-	t.Setenv("GITSTORE_GIT_URL", "")
 
 	var authorization string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

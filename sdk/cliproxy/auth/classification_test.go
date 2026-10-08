@@ -57,18 +57,8 @@ func TestAuthSourceKind(t *testing.T) {
 	}{
 		{
 			name: "runtime only memory",
-			auth: &Auth{Attributes: map[string]string{AttributeRuntimeOnly: "true", AttributeSourceBackend: AuthSourcePostgres}},
+			auth: &Auth{Attributes: map[string]string{AttributeRuntimeOnly: "true", AttributeSourceBackend: AuthSourceFile}},
 			want: AuthSourceMemory,
-		},
-		{
-			name: "backend postgres",
-			auth: &Auth{Attributes: map[string]string{AttributeSourceBackend: "postgresql", AttributePath: "/tmp/auth.json"}},
-			want: AuthSourcePostgres,
-		},
-		{
-			name: "backend object store",
-			auth: &Auth{Attributes: map[string]string{AttributeSourceBackend: "object-store", AttributePath: "/tmp/auth.json"}},
-			want: AuthSourceObjectStore,
 		},
 		{
 			name: "config source",

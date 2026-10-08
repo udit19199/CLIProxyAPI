@@ -26,11 +26,7 @@ func ResolveToken() string {
 			return token
 		}
 	}
-	gitURL := strings.ToLower(strings.TrimSpace(os.Getenv("GITSTORE_GIT_URL")))
-	if !strings.Contains(gitURL, "github.com") {
-		return ""
-	}
-	return strings.TrimSpace(os.Getenv("GITSTORE_GIT_TOKEN"))
+	return ""
 }
 
 // TokenForURL never exposes the shared credential outside the HTTPS GitHub API.

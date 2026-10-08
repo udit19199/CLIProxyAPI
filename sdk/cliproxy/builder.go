@@ -255,11 +255,6 @@ func (b *Builder) Build() (*Service, error) {
 		if dirSetter, ok := tokenStore.(interface{ SetBaseDir(string) }); ok && b.cfg != nil {
 			dirSetter.SetBaseDir(b.cfg.AuthDir)
 		}
-		if cooldownStateStore == nil {
-			if provider, ok := tokenStore.(coreauth.CooldownStateStoreProvider); ok {
-				cooldownStateStore = provider.CooldownStateStore()
-			}
-		}
 
 		routingState := normalizedRoutingRuntimeState(b.cfg)
 		coreManager = coreauth.NewManager(tokenStore, newRoutingSelector(routingState), nil)

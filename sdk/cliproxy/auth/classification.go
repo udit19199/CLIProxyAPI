@@ -6,12 +6,9 @@ const (
 	AuthKindAPIKey = "apikey"
 	AuthKindOAuth  = "oauth"
 
-	AuthSourceConfig      = "config"
-	AuthSourceFile        = "file"
-	AuthSourceGit         = "git"
-	AuthSourceMemory      = "memory"
-	AuthSourceObjectStore = "objectstore"
-	AuthSourcePostgres    = "postgres"
+	AuthSourceConfig = "config"
+	AuthSourceFile   = "file"
+	AuthSourceMemory = "memory"
 
 	AttributeAPIKey               = "api_key"
 	AttributeAuthKind             = "auth_kind"
@@ -94,14 +91,8 @@ func normalizeAuthSourceKind(source string) string {
 		return AuthSourceConfig
 	case AuthSourceFile, "filesystem":
 		return AuthSourceFile
-	case AuthSourceGit:
-		return AuthSourceGit
 	case AuthSourceMemory, "runtime", "runtime_only":
 		return AuthSourceMemory
-	case AuthSourceObjectStore, "object-store":
-		return AuthSourceObjectStore
-	case AuthSourcePostgres, "postgresql", "database", "db":
-		return AuthSourcePostgres
 	default:
 		return ""
 	}
