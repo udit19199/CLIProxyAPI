@@ -49,7 +49,7 @@ type claudeThinkingReplayEntry struct {
 }
 
 // ClaudeThinkingReplaySnapshot identifies the exact replay generation read for one request.
-type ClaudeThinkingReplaySnapshot = KimiThinkingReplaySnapshot
+type ClaudeThinkingReplaySnapshot = ThinkingReplaySnapshot
 
 type claudeThinkingReplayHomeValue struct {
 	Generation string            `json:"generation"`
@@ -63,7 +63,7 @@ var (
 	claudeThinkingReplayTotalBytes int
 )
 
-var currentClaudeThinkingReplayKVClient = func() (kimiThinkingReplayKVClient, bool, error) {
+var currentClaudeThinkingReplayKVClient = func() (thinkingReplayKVClient, bool, error) {
 	return homekv.CurrentKVClient()
 }
 
@@ -282,7 +282,7 @@ func ClearClaudeThinkingReplayCache() {
 	claudeThinkingReplayMu.Unlock()
 }
 
-func readOrReserveClaudeThinkingReplayHomeValue(ctx context.Context, client kimiThinkingReplayKVClient, key string) ([]byte, error) {
+func readOrReserveClaudeThinkingReplayHomeValue(ctx context.Context, client thinkingReplayKVClient, key string) ([]byte, error) {
 	for attempt := 0; attempt < 4; attempt++ {
 		raw, found, errGet := client.KVGet(ctx, key)
 		if errGet != nil {

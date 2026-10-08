@@ -216,7 +216,7 @@ port: 8317
 api-keys: [client]
 request-retry: 0
 ws-auth: false
-quota-exceeded: {switch-project: true, switch-preview-model: true, antigravity-credits: true}
+quota-exceeded: {switch-project: true, switch-preview-model: true}
 codex-api-key:
   - api-key: a
     base-url: https://example.invalid
@@ -527,8 +527,7 @@ func TestV8MigrationPreservesEmptyLegacyContainers(t *testing.T) {
 		{"codex-header-defaults", "oauth.providers.codex.header-defaults"},
 		{"claude", "upstream.claude"}, {"claude-code", "upstream.claude"},
 		{"claude-header-defaults", "upstream.claude.header-defaults"},
-		{"antigravity", "oauth.providers.antigravity"}, {"antigravity.connection-pool", "oauth.providers.antigravity.connection-pool"},
-		{"xai", "upstream.xai"}, {"devin", "oauth.providers.devin"},
+		{"xai", "upstream.xai"},
 	} {
 		for _, empty := range []string{"{}", "null"} {
 			t.Run(section.old+"/"+empty, func(t *testing.T) {
@@ -710,7 +709,7 @@ func TestV8RejectsInvalidGroups(t *testing.T) {
 func TestV8ValidationRejectsLegacyWriteLayout(t *testing.T) {
 	for _, raw := range []string{
 		"debug: true", "server: {port: 8317}\nport: 8318", "api-keys: [client]",
-		"codex-api-key: []", "codex: {}", "quota-exceeded: {antigravity-credits: true}",
+		"codex-api-key: []", "codex: {}",
 		"home: {enabled: true}", "enable-gemini-cli-endpoint: true", "unknown-root: true",
 		"<<: {debug: true}",
 	} {

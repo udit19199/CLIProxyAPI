@@ -48,7 +48,6 @@ func TestExtractSummaryConfig(t *testing.T) {
 		{name: "claude auto compatibility budget omitted", format: "claude", body: `{"thinking":{"type":"enabled","budget_tokens":-1,"display":"omitted"}}`, wantMode: SummaryDisabled},
 		{name: "gemini include true", format: "gemini", body: `{"generationConfig":{"thinkingConfig":{"includeThoughts":true}}}`, wantMode: SummaryEnabled, wantDetail: "auto"},
 		{name: "gemini include false", format: "gemini", body: `{"generationConfig":{"thinkingConfig":{"includeThoughts":false}}}`, wantMode: SummaryDisabled},
-		{name: "antigravity include true", format: "antigravity", body: `{"request":{"generationConfig":{"thinkingConfig":{"includeThoughts":true}}}}`, wantMode: SummaryEnabled, wantDetail: "auto"},
 		{name: "interactions auto", format: "interactions", body: `{"generation_config":{"thinking_summaries":"auto"}}`, wantMode: SummaryEnabled, wantDetail: "auto"},
 		{name: "interactions none", format: "interactions", body: `{"generation_config":{"thinking_summaries":"none"}}`, wantMode: SummaryDisabled},
 		{name: "interactions nested snake include false", format: "interactions", body: `{"generation_config":{"thinking_config":{"include_thoughts":false}}}`, wantMode: SummaryDisabled},
@@ -110,7 +109,6 @@ func TestApplySummaryConfig(t *testing.T) {
 		{name: "claude disabled", format: "claude", body: `{"thinking":{"type":"enabled","budget_tokens":2048}}`, config: SummaryConfig{Mode: SummaryDisabled}, path: "thinking.display", want: "omitted"},
 		{name: "gemini enabled", format: "gemini", config: SummaryConfig{Mode: SummaryEnabled}, path: "generationConfig.thinkingConfig.includeThoughts", want: "true"},
 		{name: "gemini disabled", format: "gemini", config: SummaryConfig{Mode: SummaryDisabled}, path: "generationConfig.thinkingConfig.includeThoughts", want: "false"},
-		{name: "antigravity enabled", format: "antigravity", config: SummaryConfig{Mode: SummaryEnabled}, path: "request.generationConfig.thinkingConfig.includeThoughts", want: "true"},
 		{name: "interactions detail collapses to auto", format: "interactions", config: SummaryConfig{Mode: SummaryEnabled, Detail: "detailed"}, path: "generation_config.thinking_summaries", want: "auto"},
 		{name: "interactions disabled", format: "interactions", config: SummaryConfig{Mode: SummaryDisabled}, path: "generation_config.thinking_summaries", want: "none"},
 		{name: "responses concise", format: "openai-response", config: SummaryConfig{Mode: SummaryEnabled, Detail: "concise"}, path: "reasoning.summary", want: "concise"},
@@ -178,7 +176,6 @@ func TestApplySummaryConfigNormalizesTargetAliases(t *testing.T) {
 		alias     string
 	}{
 		{format: "gemini", body: `{"generationConfig":{"thinkingConfig":{"include_thoughts":true}}}`, canonical: "generationConfig.thinkingConfig.includeThoughts", alias: "generationConfig.thinkingConfig.include_thoughts"},
-		{format: "antigravity", body: `{"request":{"generationConfig":{"thinkingConfig":{"include_thoughts":true}}}}`, canonical: "request.generationConfig.thinkingConfig.includeThoughts", alias: "request.generationConfig.thinkingConfig.include_thoughts"},
 		{format: "interactions", body: `{"generation_config":{"thinkingSummaries":"auto"}}`, canonical: "generation_config.thinking_summaries", alias: "generation_config.thinkingSummaries"},
 	}
 	for _, test := range tests {

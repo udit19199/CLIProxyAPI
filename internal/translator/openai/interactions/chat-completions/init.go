@@ -8,21 +8,12 @@ import (
 
 func init() {
 	translator.Register(
-		OpenAI,
-		Interactions,
-		ConvertOpenAIRequestToInteractions,
-		interfaces.TranslateResponse{
-			Stream:    ConvertInteractionsResponseToOpenAI,
-			NonStream: ConvertInteractionsResponseToOpenAINonStream,
-		},
-	)
-	translator.Register(
 		Interactions,
 		OpenAI,
 		ConvertInteractionsRequestToOpenAI,
 		interfaces.TranslateResponse{
-			Stream:    ConvertOpenAIResponseToInteractions,
-			NonStream: ConvertOpenAIResponseToInteractionsNonStream,
+			Stream:    ConvertInteractionsResponseToOpenAI,
+			NonStream: ConvertInteractionsResponseToOpenAINonStream,
 		},
 	)
 }

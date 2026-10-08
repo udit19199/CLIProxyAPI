@@ -102,7 +102,7 @@ func ExtractCanonicalTurns(format sdktranslator.Format, payload []byte) []Canoni
 	switch {
 	case formatEqual(format, sdktranslator.FormatClaude):
 		appendMessagesTurns(&turns, root, true)
-	case formatEqual(format, sdktranslator.FormatGemini), formatEqual(format, sdktranslator.FormatAntigravity):
+	case formatEqual(format, sdktranslator.FormatGemini):
 		appendGeminiTurns(&turns, root)
 	case formatEqual(format, sdktranslator.FormatInteractions):
 		appendInteractionTurns(&turns, root)

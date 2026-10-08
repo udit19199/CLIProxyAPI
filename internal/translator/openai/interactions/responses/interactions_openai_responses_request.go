@@ -56,7 +56,7 @@ func convertOpenAIResponsesRequestToInteractions(modelName string, inputRawJSON 
 				tcRaw = nil
 			}
 			if forAntigravity && fnName != "" {
-				fnName = translatorcommon.AntigravityToolNameToUpstream(fnName)
+				fnName = translatorcommon.ExternalToolNameToUpstream(fnName)
 			}
 			if fnName != "" && tcRaw != nil {
 				if toolChoice.Get("function.name").Exists() {
@@ -490,7 +490,7 @@ func responsesFunctionCallToInteractions(item gjson.Result, forAntigravity bool)
 		name = util.QualifyResponsesNamespaceToolName(ns, name)
 	}
 	if forAntigravity {
-		name = translatorcommon.AntigravityToolNameToUpstream(name)
+		name = translatorcommon.ExternalToolNameToUpstream(name)
 	}
 	out, _ = sjson.SetBytes(out, "name", name)
 	if callID := firstNonEmpty(item.Get("call_id").String(), item.Get("id").String()); callID != "" {
@@ -507,7 +507,7 @@ func responsesCustomToolCallToInteractions(item gjson.Result, forAntigravity boo
 		name = util.QualifyResponsesNamespaceToolName(ns, name)
 	}
 	if forAntigravity {
-		name = translatorcommon.AntigravityToolNameToUpstream(name)
+		name = translatorcommon.ExternalToolNameToUpstream(name)
 	}
 	out, _ = sjson.SetBytes(out, "name", name)
 	if callID := firstNonEmpty(item.Get("call_id").String(), item.Get("id").String()); callID != "" {
@@ -533,7 +533,7 @@ func responsesFunctionOutputToInteractions(item gjson.Result, functionNamesByCal
 	}
 	if name != "" {
 		if forAntigravity {
-			name = translatorcommon.AntigravityToolNameToUpstream(name)
+			name = translatorcommon.ExternalToolNameToUpstream(name)
 		}
 		out, _ = sjson.SetBytes(out, "name", name)
 	}
@@ -587,7 +587,7 @@ func appendResponsesToolsToInteractions(out []byte, root gjson.Result, forAntigr
 
 		name := descriptor.Name
 		if forAntigravity {
-			name = translatorcommon.AntigravityToolNameToUpstream(name)
+			name = translatorcommon.ExternalToolNameToUpstream(name)
 		}
 
 		item := []byte(`{"type":"function","name":""}`)
@@ -768,7 +768,7 @@ func interactionsFunctionCallToResponsesWithIdentity(item gjson.Result, forAntig
 	var namespace string
 	var isCustom bool
 	if forAntigravity {
-		name = translatorcommon.AntigravityUpstreamToolNameToClient(name)
+		name = translatorcommon.ExternalToolNameToClient(name)
 	}
 	if toolIdentityMap != nil {
 		if identity, ok := toolIdentityMap[rawName]; ok {
@@ -821,7 +821,7 @@ func interactionsFunctionResultToResponses(item gjson.Result, forAntigravity boo
 	}
 	if name := item.Get("name").String(); name != "" {
 		if forAntigravity {
-			name = translatorcommon.AntigravityUpstreamToolNameToClient(name)
+			name = translatorcommon.ExternalToolNameToClient(name)
 		}
 		out, _ = sjson.SetBytes(out, "name", name)
 	}
@@ -864,7 +864,7 @@ func responsesToolFromInteractionsTool(tool gjson.Result, forAntigravity bool) (
 		return nil, false
 	}
 	if forAntigravity {
-		name = translatorcommon.AntigravityUpstreamToolNameToClient(name)
+		name = translatorcommon.ExternalToolNameToClient(name)
 	}
 	out := []byte(`{"type":"function","name":""}`)
 	out, _ = sjson.SetBytes(out, "name", name)

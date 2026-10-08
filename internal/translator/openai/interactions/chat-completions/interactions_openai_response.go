@@ -154,7 +154,7 @@ func appendOpenAIToolCallDelta(out [][]byte, st *openAIToInteractionsStreamState
 	function := toolCall.Get("function")
 	if name := function.Get("name").String(); name != "" {
 		if isAntigravityModel(modelName) {
-			name = translatorcommon.AntigravityToolNameToUpstream(name)
+			name = translatorcommon.ExternalToolNameToUpstream(name)
 		}
 		st.ToolCallNames[index] = name
 	}
@@ -341,7 +341,7 @@ func openAIToolCallToInteractionsStep(toolCall gjson.Result, forAntigravity bool
 	}
 	name := function.Get("name").String()
 	if forAntigravity {
-		name = translatorcommon.AntigravityToolNameToUpstream(name)
+		name = translatorcommon.ExternalToolNameToUpstream(name)
 	}
 	step, _ = sjson.SetBytes(step, "name", name)
 	setRawJSONValue(&step, "arguments", function.Get("arguments"), []byte(`{}`))

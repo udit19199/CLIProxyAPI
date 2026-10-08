@@ -376,7 +376,7 @@ func (m *Manager) homeDispatchSessionID(opts cliproxyexecutor.Options) string {
 
 func providerFromSourceFormat(format sdktranslator.Format) string {
 	switch {
-	case strings.EqualFold(string(format), string(sdktranslator.FormatGemini)), strings.EqualFold(string(format), string(sdktranslator.FormatAntigravity)):
+	case strings.EqualFold(string(format), string(sdktranslator.FormatGemini)):
 		return "google"
 	case strings.EqualFold(string(format), string(sdktranslator.FormatClaude)):
 		return "claude"

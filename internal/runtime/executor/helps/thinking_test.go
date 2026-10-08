@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	helps "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
-	_ "github.com/router-for-me/CLIProxyAPI/v8/internal/thinking/provider/gemini"
 	_ "github.com/router-for-me/CLIProxyAPI/v8/internal/translator"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
@@ -103,7 +102,7 @@ func TestApplyThinkingWithSourcePayload_AntigravityResponsesReasoningSummaryAuto
 	source := []byte(`{"model":"gemini-3.8-flash-high","reasoning":{"effort":"low","summary":"auto"},"input":"hi"}`)
 	translated := sdktranslator.TranslateRequest(
 		sdktranslator.FormatOpenAIResponse,
-		sdktranslator.FormatAntigravity,
+		sdktranslator.FormatGemini,
 		"gemini-3.8-flash-high",
 		source,
 		false,
@@ -115,7 +114,7 @@ func TestApplyThinkingWithSourcePayload_AntigravityResponsesReasoningSummaryAuto
 		source,
 		"gemini-3.8-flash-high",
 		sdktranslator.FormatOpenAIResponse.String(),
-		sdktranslator.FormatAntigravity.String(),
+		sdktranslator.FormatGemini.String(),
 		"antigravity",
 	)
 	if err != nil {

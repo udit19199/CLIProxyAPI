@@ -627,7 +627,7 @@ func TestExtractCanonicalTurnsAntigravityNestedRequest(t *testing.T) {
 			]
 		}
 	}`)
-	turns := ExtractCanonicalTurns(sdktranslator.FormatAntigravity, nested)
+	turns := ExtractCanonicalTurns(sdktranslator.FormatGemini, nested)
 	if len(turns) != 2 {
 		t.Fatalf("len(turns) = %d, want 2", len(turns))
 	}

@@ -503,7 +503,7 @@ func DeriveID(format sdktranslator.Format, payload []byte, callerScope string) s
 		Format:      format.String(),
 		CallerScope: strings.TrimSpace(callerScope),
 	}
-	if sourceFormatEqual(format, sdktranslator.FormatGemini) || sourceFormatEqual(format, sdktranslator.FormatAntigravity) {
+	if sourceFormatEqual(format, sdktranslator.FormatGemini) {
 		reqBody := body
 		if req, ok := body["request"].(map[string]any); ok {
 			reqBody = req
@@ -512,7 +512,7 @@ func DeriveID(format sdktranslator.Format, payload []byte, callerScope string) s
 	}
 
 	switch {
-	case sourceFormatEqual(format, sdktranslator.FormatGemini), sourceFormatEqual(format, sdktranslator.FormatAntigravity):
+	case sourceFormatEqual(format, sdktranslator.FormatGemini):
 		root.Instructions, root.User = geminiRoot(body)
 	case sourceFormatEqual(format, sdktranslator.FormatInteractions):
 		root.Instructions, root.User = interactionsRoot(body)

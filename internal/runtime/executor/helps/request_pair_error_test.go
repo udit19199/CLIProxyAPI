@@ -40,7 +40,7 @@ func TestPairTranslationReportsOnlyTheWorkingError(t *testing.T) {
 	routes := map[string]pairFunc{}
 	routes["antigravity envelope pair"] = func(original, working []byte) ([]byte, []byte, error) {
 		req := sdktranslator.RequestEnvelope{Format: sdktranslator.FormatClaude, Model: "m"}
-		return TranslateRequestEnvelopePairWithCodexMultiAgentV2(ctx, nil, &config.Config{}, sdktranslator.FormatClaude, sdktranslator.FormatAntigravity, req, original, working)
+		return TranslateRequestEnvelopePairWithCodexMultiAgentV2(ctx, nil, &config.Config{}, sdktranslator.FormatClaude, sdktranslator.FormatGemini, req, original, working)
 	}
 	for _, to := range []sdktranslator.Format{sdktranslator.FormatOpenAI, sdktranslator.FormatGemini, sdktranslator.FormatCodex, sdktranslator.FormatInteractions} {
 		for _, compat := range []bool{false, true} {
@@ -85,7 +85,7 @@ func TestEnvelopePairKeepsTheWorkingPayloadWhenTheBaselineIsRefused(t *testing.T
 	file := []byte(pairFileOnlyClaude)
 	text := []byte(pairTextOnlyClaude)
 	req := sdktranslator.RequestEnvelope{Format: sdktranslator.FormatClaude, Model: "m"}
-	_, working, err := TranslateRequestEnvelopePairWithCodexMultiAgentV2(context.Background(), nil, &config.Config{}, sdktranslator.FormatClaude, sdktranslator.FormatAntigravity, req, append([]byte(nil), file...), text)
+	_, working, err := TranslateRequestEnvelopePairWithCodexMultiAgentV2(context.Background(), nil, &config.Config{}, sdktranslator.FormatClaude, sdktranslator.FormatGemini, req, append([]byte(nil), file...), text)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -126,10 +126,10 @@ func TestResponsesAudioAndTextBesideFileIDOnCompatPath(t *testing.T) {
 // Antigravity is reached through the same checked registry as every other target.
 func TestAntigravityTargetsReportUnsupportedParts(t *testing.T) {
 	claudeFile := []byte(`{"model":"m","messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi"},{"role":"user","content":[{"type":"container_upload","file_id":"file-1"}]}]}`)
-	_, err := TranslateRequestReturningError(context.Background(), nil, &config.Config{}, sdktranslator.FormatClaude, sdktranslator.FormatAntigravity, "m", claudeFile, false, false)
+	_, err := TranslateRequestReturningError(context.Background(), nil, &config.Config{}, sdktranslator.FormatClaude, sdktranslator.FormatGemini, "m", claudeFile, false, false)
 	requireUnsupportedPart(t, "claude to antigravity", err, "container_upload")
 
 	openAIFile := []byte(`{"model":"m","messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi"},{"role":"user","content":[{"type":"file","file":{"file_id":"file-1"}}]}]}`)
-	_, err = TranslateRequestReturningError(context.Background(), nil, &config.Config{}, sdktranslator.FormatOpenAI, sdktranslator.FormatAntigravity, "m", openAIFile, false, false)
+	_, err = TranslateRequestReturningError(context.Background(), nil, &config.Config{}, sdktranslator.FormatOpenAI, sdktranslator.FormatGemini, "m", openAIFile, false, false)
 	requireUnsupportedPart(t, "openai to antigravity", err, "file")
 }

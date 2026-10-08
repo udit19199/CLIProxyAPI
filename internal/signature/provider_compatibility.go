@@ -243,7 +243,7 @@ func DetectSignatureProviderForBlock(rawSignature string, blockKind SignatureBlo
 	// coincidence can never capture another provider's signature, and a future
 	// drift in Kimi's sizes costs Kimi its own identification rather than
 	// corrupting a neighbouring family.
-	if IsValidKimiThinkingSignature(sig) {
+	if IsValidForeignThinkingSignature(sig) {
 		return SignatureProviderKimi
 	}
 	return SignatureProviderUnknown
@@ -498,7 +498,7 @@ func normalizeCompatibleSignatureForProvider(targetProvider SignatureProvider, r
 			return payload
 		}
 	case SignatureProviderKimi:
-		if IsValidKimiThinkingSignature(payload) {
+		if IsValidForeignThinkingSignature(payload) {
 			return payload
 		}
 	}

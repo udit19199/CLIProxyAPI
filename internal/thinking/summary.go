@@ -77,15 +77,6 @@ func ExtractSummaryConfig(body []byte, format string) SummaryConfig {
 		}); ok {
 			return config
 		}
-	case "antigravity":
-		if config, ok := firstSummaryBoolConfig(body, []string{
-			"request.generationConfig.thinkingConfig.includeThoughts",
-			"request.generationConfig.thinkingConfig.include_thoughts",
-			"request.generationConfig.thinking_config.includeThoughts",
-			"request.generationConfig.thinking_config.include_thoughts",
-		}); ok {
-			return config
-		}
 	case "interactions":
 		for _, path := range []string{
 			"generation_config.thinking_summaries",
@@ -218,15 +209,6 @@ func applySummaryConfigForProvider(body []byte, format, model, provider string, 
 		} {
 			body, _ = sjson.DeleteBytes(body, path)
 		}
-	case "antigravity":
-		body, _ = sjson.SetBytes(body, "request.generationConfig.thinkingConfig.includeThoughts", enabled)
-		for _, path := range []string{
-			"request.generationConfig.thinkingConfig.include_thoughts",
-			"request.generationConfig.thinking_config.include_thoughts",
-			"request.generationConfig.thinking_config.includeThoughts",
-		} {
-			body, _ = sjson.DeleteBytes(body, path)
-		}
 	case "interactions":
 		// Google Interactions only accepts auto or none. OpenAI's concise and
 		// detailed selectors therefore collapse to the supported enabled value.
@@ -257,7 +239,7 @@ func applySummaryConfigForProvider(body []byte, format, model, provider string, 
 // intent that this package can read or write.
 func summaryFormatSupported(format string) bool {
 	switch format {
-	case "openai", "openai-response", "codex", "claude", "gemini", "antigravity", "interactions":
+	case "openai", "openai-response", "codex", "claude", "gemini", "interactions":
 		return true
 	default:
 		return false
@@ -300,7 +282,6 @@ func claudeThinkingAcceptsDisplay(body []byte) bool {
 // https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create
 // https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
 // https://api-docs.deepseek.com/guides/thinking_mode
-// https://platform.kimi.ai/docs/api/chat
 func applyOpenAIChatSummaryConfig(body []byte, provider string, enabled bool) []byte {
 	if isOpenRouterProvider(provider) || gjson.GetBytes(body, "reasoning.exclude").IsBool() {
 		body, _ = sjson.SetBytes(body, "reasoning.exclude", !enabled)

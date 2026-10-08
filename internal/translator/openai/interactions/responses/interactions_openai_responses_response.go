@@ -1090,7 +1090,7 @@ func openAIResponsesOutputItemAddedToInteractions(modelName string, root gjson.R
 		step := []byte(`{"type":"function_call","name":"","arguments":{}}`)
 		name := item.Get("name").String()
 		if isAntigravityModel(modelName) {
-			name = translatorcommon.AntigravityToolNameToUpstream(name)
+			name = translatorcommon.ExternalToolNameToUpstream(name)
 		}
 		step, _ = sjson.SetBytes(step, "name", name)
 		if callID := firstNonEmpty(item.Get("call_id").String(), item.Get("id").String()); callID != "" {
@@ -1314,7 +1314,7 @@ func ensureInteractionsFunctionCallStep(out [][]byte, st *responsesToInteraction
 	step := []byte(`{"type":"function_call","name":"","arguments":{}}`)
 	name := item.Get("name").String()
 	if isAntigravityModel(modelName) {
-		name = translatorcommon.AntigravityToolNameToUpstream(name)
+		name = translatorcommon.ExternalToolNameToUpstream(name)
 	}
 	step, _ = sjson.SetBytes(step, "name", name)
 	if callID := firstNonEmpty(item.Get("call_id").String(), item.Get("id").String(), root.Get("call_id").String(), root.Get("item_id").String()); callID != "" {
@@ -1533,7 +1533,7 @@ func interactionsToolIdentityMap(rawJSON []byte, forAntigravity bool) map[string
 	for name, descriptor := range util.CollectResponsesToolWinners(root) {
 		identity := util.ResponsesToolIdentity{Name: descriptor.LocalName, Namespace: descriptor.Namespace, Custom: descriptor.ToolType == "custom", ApplyPatch: applypatch.IsCustomTool(descriptor.Tool)}
 		if forAntigravity {
-			name = translatorcommon.AntigravityToolNameToUpstream(name)
+			name = translatorcommon.ExternalToolNameToUpstream(name)
 		}
 		identities[name] = identity
 	}
@@ -1758,7 +1758,7 @@ func interactionsUpdateFunctionCall(index int, step gjson.Result, st *interactio
 	} else {
 		call.Name = call.RawName
 		if st.ForAntigravity {
-			call.Name = translatorcommon.AntigravityUpstreamToolNameToClient(call.RawName)
+			call.Name = translatorcommon.ExternalToolNameToClient(call.RawName)
 		}
 	}
 	if identity.ApplyPatch {

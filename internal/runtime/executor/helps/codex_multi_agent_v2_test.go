@@ -149,7 +149,7 @@ func TestTranslateRequestPairInvokesPluginOncePerInput(t *testing.T) {
 			}
 			base, work := TranslateRequestPairWithCodexMultiAgentV2(
 				context.Background(), http.Header{}, &config.Config{},
-				sdktranslator.FormatGemini, sdktranslator.FormatAntigravity,
+				sdktranslator.FormatGemini, sdktranslator.FormatGemini,
 				"gemini-3.6-flash-high", payload, request, stream,
 			)
 			if hooks.calls != wantCalls {
@@ -215,7 +215,7 @@ func TestTranslateRequestEnvelopePairWithCodexMultiAgentV2UsesModelInfo(t *testi
 		NativeCapabilities: &registry.NativeCapabilities{WebSearch: &trueVal},
 	}
 	envelope := sdktranslator.RequestEnvelope{Format: sdktranslator.FormatOpenAIResponse, Model: model, ModelInfo: enabled}
-	base, work, errPair := TranslateRequestEnvelopePairWithCodexMultiAgentV2(context.Background(), http.Header{}, &config.Config{}, sdktranslator.FormatOpenAIResponse, sdktranslator.FormatAntigravity, envelope, input, input)
+	base, work, errPair := TranslateRequestEnvelopePairWithCodexMultiAgentV2(context.Background(), http.Header{}, &config.Config{}, sdktranslator.FormatOpenAIResponse, sdktranslator.FormatGemini, envelope, input, input)
 	if errPair != nil {
 		t.Fatalf("translate request pair: %v", errPair)
 	}
@@ -231,7 +231,7 @@ func TestTranslateRequestEnvelopePairWithCodexMultiAgentV2UsesModelInfo(t *testi
 		NativeCapabilities: &registry.NativeCapabilities{WebSearch: &falseVal},
 	}
 	envelope.ModelInfo = disabled
-	_, workDisabled, errPair := TranslateRequestEnvelopePairWithCodexMultiAgentV2(context.Background(), http.Header{}, &config.Config{}, sdktranslator.FormatOpenAIResponse, sdktranslator.FormatAntigravity, envelope, input, input)
+	_, workDisabled, errPair := TranslateRequestEnvelopePairWithCodexMultiAgentV2(context.Background(), http.Header{}, &config.Config{}, sdktranslator.FormatOpenAIResponse, sdktranslator.FormatGemini, envelope, input, input)
 	if errPair != nil {
 		t.Fatalf("translate request pair: %v", errPair)
 	}

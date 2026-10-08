@@ -19,7 +19,7 @@ import (
 type thinkingReplayScope struct {
 	modelFamily   string
 	sessionKey    string
-	snapshot      internalcache.KimiThinkingReplaySnapshot
+	snapshot      internalcache.ThinkingReplaySnapshot
 	cacheReady    bool
 	replayApplied bool
 }
@@ -235,7 +235,7 @@ func (a *replayStreamAccumulator) observe(chunk []byte) {
 func (a *replayStreamAccumulator) observeBlockStart(root gjson.Result) {
 	index := int(root.Get("index").Int())
 	block := root.Get("content_block")
-	if !block.IsObject() || len(a.blocks) >= internalcache.KimiThinkingReplayCacheMaxBlocksPerEntry {
+	if !block.IsObject() || len(a.blocks) >= internalcache.ThinkingReplayCacheMaxBlocksPerEntry {
 		a.abandon()
 		return
 	}
@@ -304,7 +304,7 @@ func (a *replayStreamAccumulator) finishBlock(index int) {
 }
 
 func (a *replayStreamAccumulator) reserveBytes(count int) bool {
-	if count < 0 || a.bytesUsed > internalcache.KimiThinkingReplayCacheMaxBytesPerEntry-count {
+	if count < 0 || a.bytesUsed > internalcache.ThinkingReplayCacheMaxBytesPerEntry-count {
 		a.abandon()
 		return false
 	}
@@ -355,7 +355,7 @@ func (a *replayStreamAccumulator) content() ([]byte, bool) {
 		parts = append(parts, raw)
 	}
 	content := helps.JoinRawJSONArray(parts)
-	if len(content) > internalcache.KimiThinkingReplayCacheMaxBytesPerEntry {
+	if len(content) > internalcache.ThinkingReplayCacheMaxBytesPerEntry {
 		a.abandon()
 		return nil, false
 	}

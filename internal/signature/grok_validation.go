@@ -90,7 +90,7 @@ func InspectGrokEncryptedContent(raw string) (*GrokEncryptedContentInfo, error) 
 	// length tracks reasoning volume continuously at 1-byte granularity. Neither
 	// observed Kimi length appears anywhere in 1027 catalogued signatures or 215
 	// native Grok samples, so rejecting them here costs no real Grok traffic.
-	if IsValidKimiThinkingSignature(sig) {
+	if IsValidForeignThinkingSignature(sig) {
 		return nil, fmt.Errorf("Grok encrypted_content has a Kimi thinking signature length")
 	}
 

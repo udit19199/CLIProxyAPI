@@ -190,7 +190,7 @@ func HasDecodableClaudeThinkingSignature(rawSignature string) bool {
 
 	switch sig[0] {
 	case 'Q':
-		_, err := InspectAntigravityClaudeCAQSSignature(sig)
+		_, err := InspectClaudeCAQSDoubleEnvelopeSignature(sig)
 		return err == nil
 	case 'E':
 		decoded, err := base64.StdEncoding.DecodeString(sig)
@@ -215,7 +215,7 @@ func HasClaudeThinkingSignaturePrefix(rawSignature string) bool {
 		return false
 	}
 	if sig[0] == 'Q' {
-		_, err := InspectAntigravityClaudeCAQSSignature(sig)
+		_, err := InspectClaudeCAQSDoubleEnvelopeSignature(sig)
 		return err == nil
 	}
 	return sig[0] == 'E' || sig[0] == 'R'
@@ -284,7 +284,7 @@ func NormalizeClaudeThinkingSignature(rawSignature string, opts ...ClaudeSignatu
 
 	switch sig[0] {
 	case 'Q':
-		if _, err := InspectAntigravityClaudeCAQSSignature(sig); err != nil {
+		if _, err := InspectClaudeCAQSDoubleEnvelopeSignature(sig); err != nil {
 			return "", err
 		}
 		return sig, nil

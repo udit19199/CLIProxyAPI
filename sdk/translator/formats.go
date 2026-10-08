@@ -7,6 +7,5 @@ const (
 	FormatClaude         Format = "claude"
 	FormatGemini         Format = "gemini"
 	FormatCodex          Format = "codex"
-	FormatAntigravity    Format = "antigravity"
 	FormatInteractions   Format = "interactions"
 )

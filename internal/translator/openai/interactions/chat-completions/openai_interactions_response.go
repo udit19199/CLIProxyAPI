@@ -167,7 +167,7 @@ func interactionsStepStartToOpenAIChat(modelName string, root gjson.Result, st *
 		st.ToolIDs[index] = firstNonEmpty(step.Get("call_id").String(), step.Get("id").String(), fmt.Sprintf("call_%d", toolCallIndex))
 		name := step.Get("name").String()
 		if isAntigravityModel(modelName) || (st != nil && isAntigravityModel(st.Model)) {
-			name = translatorcommon.AntigravityUpstreamToolNameToClient(name)
+			name = translatorcommon.ExternalToolNameToClient(name)
 		}
 		st.ToolNames[index] = name
 		if st.ToolArguments[index] == nil {
@@ -328,7 +328,7 @@ func openAIChatToolCallFromInteractions(step, fallbackArgs gjson.Result, forAnti
 	toolCall, _ = sjson.SetBytes(toolCall, "id", callID)
 	name := step.Get("name").String()
 	if forAntigravity {
-		name = translatorcommon.AntigravityUpstreamToolNameToClient(name)
+		name = translatorcommon.ExternalToolNameToClient(name)
 	}
 	toolCall, _ = sjson.SetBytes(toolCall, "function.name", name)
 	args := step.Get("arguments")

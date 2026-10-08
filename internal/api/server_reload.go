@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/access"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/cache"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/githubauth"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
@@ -109,8 +108,6 @@ func (s *Server) UpdateClientsContext(ctx context.Context, cfg *config.Config) b
 	if oldCfg != nil && oldCfg.DisableImageGeneration != cfg.DisableImageGeneration {
 		log.Infof("disable-image-generation updated: %v -> %v", oldCfg.DisableImageGeneration, cfg.DisableImageGeneration)
 	}
-
-	applySignatureCacheConfig(oldCfg, cfg)
 
 	if s.handlers != nil && s.handlers.AuthManager != nil {
 		s.handlers.AuthManager.SetRetryConfig(cfg.RequestRetry, time.Duration(cfg.MaxRetryInterval)*time.Second, cfg.MaxRetryCredentials)
@@ -245,38 +242,4 @@ func (s *Server) SetWebsocketAuthChangeHandler(fn func(bool, bool)) {
 		return
 	}
 	s.wsAuthChanged = fn
-}
-
-func configuredSignatureCacheEnabled(cfg *config.Config) bool {
-	if cfg != nil && cfg.AntigravitySignatureCacheEnabled != nil {
-		return *cfg.AntigravitySignatureCacheEnabled
-	}
-	return true
-}
-
-func applySignatureCacheConfig(oldCfg, cfg *config.Config) {
-	newVal := configuredSignatureCacheEnabled(cfg)
-	newStrict := configuredSignatureBypassStrict(cfg)
-	if oldCfg == nil {
-		cache.SetSignatureCacheEnabled(newVal)
-		cache.SetSignatureBypassStrictMode(newStrict)
-		return
-	}
-
-	oldVal := configuredSignatureCacheEnabled(oldCfg)
-	if oldVal != newVal {
-		cache.SetSignatureCacheEnabled(newVal)
-	}
-
-	oldStrict := configuredSignatureBypassStrict(oldCfg)
-	if oldStrict != newStrict {
-		cache.SetSignatureBypassStrictMode(newStrict)
-	}
-}
-
-func configuredSignatureBypassStrict(cfg *config.Config) bool {
-	if cfg != nil && cfg.AntigravitySignatureBypassStrict != nil {
-		return *cfg.AntigravitySignatureBypassStrict
-	}
-	return false
 }

@@ -69,18 +69,15 @@ func TestCodexConfigurationUpdateCapability(t *testing.T) {
 	}
 }
 
-func TestGetStaticModelDefinitionsByChannelSupportsGeminiInteractions(t *testing.T) {
-	models := GetStaticModelDefinitionsByChannel("gemini-interactions")
-	if len(models) == 0 {
-		t.Fatal("GetStaticModelDefinitionsByChannel(gemini-interactions) returned no models")
-	}
-}
-
-func TestGetStaticModelDefinitionsByChannelSupportsKimiAndKimiAI(t *testing.T) {
-	for _, channel := range []string{"kimi", "kimi-ai", "kimi.ai", "kimi.com"} {
-		models := GetStaticModelDefinitionsByChannel(channel)
-		if len(models) == 0 {
+func TestGetStaticModelDefinitionsByChannelSupportsSurvivingChannels(t *testing.T) {
+	for _, channel := range []string{"claude", "codex", "xai", "grok"} {
+		if models := GetStaticModelDefinitionsByChannel(channel); len(models) == 0 {
 			t.Fatalf("GetStaticModelDefinitionsByChannel(%s) returned no models", channel)
+		}
+	}
+	for _, channel := range []string{"gemini", "gemini-interactions", "vertex", "aistudio", "kimi", "antigravity", "meta"} {
+		if models := GetStaticModelDefinitionsByChannel(channel); models != nil {
+			t.Fatalf("GetStaticModelDefinitionsByChannel(%s) = %d models, want nil", channel, len(models))
 		}
 	}
 }
@@ -97,25 +94,6 @@ func TestModelOverrideHeadersFromEmbeddedModels(t *testing.T) {
 	if got := ModelOverrideHeaders("gpt-5.4"); got != nil {
 		t.Fatalf("ModelOverrideHeaders(gpt-5.4) = %#v, want nil", got)
 	}
-}
-
-func TestGeminiVertexModelsUseFlashLiteReleaseID(t *testing.T) {
-	const releaseID = "gemini-3.1-flash-lite"
-	const previewID = releaseID + "-preview"
-
-	for _, model := range GetGeminiVertexModels() {
-		if model == nil {
-			continue
-		}
-		if model.ID == previewID {
-			t.Fatalf("Vertex model ID = %q, want release ID %q", model.ID, releaseID)
-		}
-		if model.ID == releaseID {
-			return
-		}
-	}
-
-	t.Fatalf("Vertex models do not contain %q", releaseID)
 }
 
 func TestWithXAIBuiltinsIncludesImage20(t *testing.T) {

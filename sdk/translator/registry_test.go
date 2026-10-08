@@ -371,7 +371,7 @@ func TestTranslateStream_PluginTranslatorUsedWhenNativeStreamMissing(t *testing.
 func TestRequestEnvelopePreservesRegisteredTransformDispatch(t *testing.T) {
 	r := NewRegistry()
 	from := FormatOpenAIResponse
-	to := FormatAntigravity
+	to := FormatGemini
 	modelInfo := &registry.ModelInfo{ID: "home-model"}
 
 	r.RegisterRequestEnvelope(from, to, func(_ context.Context, req RequestEnvelope) RequestEnvelope {

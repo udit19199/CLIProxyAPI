@@ -149,7 +149,7 @@ func appendInteractionsFunctionCallToOpenAI(items *[][]byte, step gjson.Result, 
 	toolCall, _ = sjson.SetBytes(toolCall, "id", callID)
 	name := step.Get("name").String()
 	if forAntigravity {
-		name = translatorcommon.AntigravityUpstreamToolNameToClient(name)
+		name = translatorcommon.ExternalToolNameToClient(name)
 	}
 	toolCall, _ = sjson.SetBytes(toolCall, "function.name", name)
 	toolCall, _ = sjson.SetBytes(toolCall, "function.arguments", jsonStringValue(step.Get("arguments"), "{}"))
@@ -283,7 +283,7 @@ func openAIToolFromInteractionsTool(tool gjson.Result, forAntigravity bool) ([]b
 		return nil, false
 	}
 	if forAntigravity {
-		name = translatorcommon.AntigravityUpstreamToolNameToClient(name)
+		name = translatorcommon.ExternalToolNameToClient(name)
 	}
 	out := []byte(`{"type":"function","function":{"name":""}}`)
 	out, _ = sjson.SetBytes(out, "function.name", name)

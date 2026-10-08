@@ -335,10 +335,10 @@ func TestEnrichCopiesDerivedIdentityToRequestAndOptions(t *testing.T) {
 	}
 }
 
-func TestDeriveIDAntigravityNestedRequestAndEmptyFirstUser(t *testing.T) {
+func TestDeriveIDGeminiNestedRequestAndEmptyFirstUser(t *testing.T) {
 	t.Parallel()
 
-	nestedAntigravity := []byte(`{
+	nestedGemini := []byte(`{
 		"project_id": "test-project",
 		"request": {
 			"systemInstruction": {"parts":[{"text":"system prompt"}]},
@@ -348,18 +348,18 @@ func TestDeriveIDAntigravityNestedRequestAndEmptyFirstUser(t *testing.T) {
 			]
 		}
 	}`)
-	id := DeriveID(sdktranslator.FormatAntigravity, nestedAntigravity, "caller-a")
+	id := DeriveID(sdktranslator.FormatGemini, nestedGemini, "caller-a")
 	if id == "" {
-		t.Fatal("DeriveID returned empty for nested Antigravity request with empty first turn")
+		t.Fatal("DeriveID returned empty for nested Gemini request with empty first turn")
 	}
 
-	directAntigravity := []byte(`{
+	directGemini := []byte(`{
 		"systemInstruction": {"parts":[{"text":"system prompt"}]},
 		"contents": [
 			{"role":"user","parts":[{"text":"actual user prompt"}]}
 		]
 	}`)
-	directID := DeriveID(sdktranslator.FormatAntigravity, directAntigravity, "caller-a")
+	directID := DeriveID(sdktranslator.FormatGemini, directGemini, "caller-a")
 	if id != directID {
 		t.Fatalf("DeriveID mismatch: nested=%s, direct=%s", id, directID)
 	}

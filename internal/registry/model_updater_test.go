@@ -18,31 +18,18 @@ func TestDetectChangedProviders_CodexConfigurationUpdate(t *testing.T) {
 	}
 }
 
-func TestDetectChangedProviders_KimiAliases(t *testing.T) {
+func TestDetectChangedProviders_CodexTiersGroupedUnderCodex(t *testing.T) {
 	oldData := &staticModelsJSON{
-		Kimi: []*ModelInfo{{ID: "kimi-k2"}},
+		CodexFree: []*ModelInfo{{ID: "gpt-6-luna"}},
+		CodexTeam: []*ModelInfo{{ID: "gpt-6-astra"}},
 	}
 	newData := &staticModelsJSON{
-		Kimi: []*ModelInfo{{ID: "kimi-k2"}, {ID: "kimi-k3"}},
+		CodexFree: []*ModelInfo{{ID: "gpt-6-luna"}},
+		CodexTeam: []*ModelInfo{{ID: "gpt-6-astra"}, {ID: "gpt-6-sol"}},
 	}
 
 	changed := detectChangedProviders(oldData, newData)
-	expected := map[string]bool{
-		"kimi":     false,
-		"kimi-ai":  false,
-		"kimi.ai":  false,
-		"kimi.com": false,
-	}
-
-	for _, p := range changed {
-		if _, ok := expected[p]; ok {
-			expected[p] = true
-		}
-	}
-
-	for p, found := range expected {
-		if !found {
-			t.Errorf("expected changed provider %q to be reported, got %v", p, changed)
-		}
+	if len(changed) != 1 || changed[0] != "codex" {
+		t.Fatalf("codex tier change: got providers %v, want [codex]", changed)
 	}
 }

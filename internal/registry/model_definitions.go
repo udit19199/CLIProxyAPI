@@ -24,37 +24,17 @@ const (
 
 // staticModelsJSON mirrors the top-level structure of models.json.
 type staticModelsJSON struct {
-	Claude      []*ModelInfo `json:"claude"`
-	Gemini      []*ModelInfo `json:"gemini"`
-	Vertex      []*ModelInfo `json:"vertex"`
-	AIStudio    []*ModelInfo `json:"aistudio"`
-	CodexFree   []*ModelInfo `json:"codex-free"`
-	CodexTeam   []*ModelInfo `json:"codex-team"`
-	CodexPlus   []*ModelInfo `json:"codex-plus"`
-	CodexPro    []*ModelInfo `json:"codex-pro"`
-	Kimi        []*ModelInfo `json:"kimi"`
-	Antigravity []*ModelInfo `json:"antigravity"`
-	XAI         []*ModelInfo `json:"xai"`
+	Claude    []*ModelInfo `json:"claude"`
+	CodexFree []*ModelInfo `json:"codex-free"`
+	CodexTeam []*ModelInfo `json:"codex-team"`
+	CodexPlus []*ModelInfo `json:"codex-plus"`
+	CodexPro  []*ModelInfo `json:"codex-pro"`
+	XAI       []*ModelInfo `json:"xai"`
 }
 
 // GetClaudeModels returns the standard Claude model definitions.
 func GetClaudeModels() []*ModelInfo {
 	return cloneModelInfos(getModels().Claude)
-}
-
-// GetGeminiModels returns the standard Gemini model definitions.
-func GetGeminiModels() []*ModelInfo {
-	return cloneModelInfos(getModels().Gemini)
-}
-
-// GetGeminiVertexModels returns Gemini model definitions for Vertex AI.
-func GetGeminiVertexModels() []*ModelInfo {
-	return cloneModelInfos(getModels().Vertex)
-}
-
-// GetAIStudioModels returns model definitions for AI Studio.
-func GetAIStudioModels() []*ModelInfo {
-	return cloneModelInfos(getModels().AIStudio)
 }
 
 // GetCodexFreeModels returns model definitions for the Codex free plan tier.
@@ -75,16 +55,6 @@ func GetCodexPlusModels() []*ModelInfo {
 // GetCodexProModels returns model definitions for the Codex pro plan tier.
 func GetCodexProModels() []*ModelInfo {
 	return WithCodexBuiltins(cloneModelInfos(getModels().CodexPro))
-}
-
-// GetKimiModels returns the standard Kimi (Moonshot AI) model definitions.
-func GetKimiModels() []*ModelInfo {
-	return cloneModelInfos(getModels().Kimi)
-}
-
-// GetAntigravityModels returns the standard Antigravity model definitions.
-func GetAntigravityModels() []*ModelInfo {
-	return cloneModelInfos(getModels().Antigravity)
 }
 
 // AntigravityWebSearchModelFor returns the Antigravity model that should run a
@@ -371,34 +341,15 @@ func cloneModelInfos(models []*ModelInfo) []*ModelInfo {
 //
 // Supported channels:
 //   - claude
-//   - gemini
-//   - gemini-interactions
-//   - vertex
-//   - aistudio
 //   - codex
-//   - kimi
-//   - antigravity
 //   - xai
-//   - meta
 func GetStaticModelDefinitionsByChannel(channel string) []*ModelInfo {
 	key := strings.ToLower(strings.TrimSpace(channel))
 	switch key {
 	case "claude":
 		return GetClaudeModels()
-	case "gemini":
-		return GetGeminiModels()
-	case "gemini-interactions":
-		return GetGeminiModels()
-	case "vertex":
-		return GetGeminiVertexModels()
-	case "aistudio":
-		return GetAIStudioModels()
 	case "codex":
 		return GetCodexProModels()
-	case "kimi", "kimi-ai", "kimi.ai", "kimi.com":
-		return GetKimiModels()
-	case "antigravity":
-		return GetAntigravityModels()
 	case "xai", "x-ai", "grok":
 		return GetXAIModels()
 	default:
@@ -421,8 +372,6 @@ func LookupStaticModelInfoByChannel(modelID, channel string) *ModelInfo {
 	return nil
 }
 
-// GetMetaModels returns the standard Meta Muse model definitions.
-
 // LookupStaticModelInfo searches all static model definitions for a model by ID.
 // Returns nil if no matching model is found.
 func LookupStaticModelInfo(modelID string) *ModelInfo {
@@ -433,12 +382,7 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
 	data := getModels()
 	allModels := [][]*ModelInfo{
 		data.Claude,
-		data.Gemini,
-		data.Vertex,
-		data.AIStudio,
 		data.CodexPro,
-		data.Kimi,
-		data.Antigravity,
 		data.XAI,
 	}
 	for _, models := range allModels {

@@ -22,9 +22,8 @@ const (
 	// OpenaiResponse represents the OpenAI response format identifier.
 	OpenaiResponse = "openai-response"
 
-	// Antigravity represents the Antigravity response format identifier.
-	Antigravity = "antigravity"
-
 	// Interactions represents the Google Interactions API format identifier.
+	// This is a wire-format identifier used by the retained inbound/outbound
+	// translators, not an account provider identifier.
 	Interactions = "interactions"
 )

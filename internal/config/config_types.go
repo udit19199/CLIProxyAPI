@@ -148,36 +148,6 @@ type XAIConfig struct {
 	InjectXSearch bool `yaml:"inject-x-search" json:"inject-x-search"`
 }
 
-// DevinConfig configures provider-wide Devin request behavior.
-type DevinConfig struct {
-	// SensitiveWords is a list of words to obfuscate with zero-width characters in system prompts and messages.
-	SensitiveWords []string `yaml:"sensitive-words,omitempty" json:"sensitive-words,omitempty"`
-}
-
-// AntigravityConfig configures provider-wide Antigravity request behavior.
-type AntigravityConfig struct {
-	// SensitiveWords is a list of words to obfuscate with zero-width characters in system instructions.
-	SensitiveWords []string `yaml:"sensitive-words,omitempty" json:"sensitive-words,omitempty"`
-
-	// ConnectionPool configures upstream HTTP connection pooling behavior for Antigravity.
-	ConnectionPool AntigravityConnectionPoolConfig `yaml:"connection-pool,omitempty" json:"connection-pool,omitempty"`
-}
-
-// AntigravityConnectionPoolConfig controls upstream HTTP/1.1 connection pooling behavior for Antigravity.
-type AntigravityConnectionPoolConfig struct {
-	// Enabled controls whether upstream connection pooling is enabled.
-	// Defaults to false (short-lived connection mode). Set to true to enable connection pooling.
-	Enabled *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
-
-	// IdleConnTimeout specifies how long an idle connection stays in the pool before expiring.
-	// Defaults to "30s". Capped at 210s to prevent exceeding Google Frontend (GFE) 240s cutoff.
-	IdleConnTimeout string `yaml:"idle-conn-timeout,omitempty" json:"idle-conn-timeout,omitempty"`
-
-	// MaxIdleConnsPerHost specifies the maximum number of idle connections to retain per host per credential.
-	// Defaults to 2.
-	MaxIdleConnsPerHost *int `yaml:"max-idle-conns-per-host,omitempty" json:"max-idle-conns-per-host,omitempty"`
-}
-
 // CodexConfig configures provider-wide Codex request behavior.
 type CodexConfig struct {
 	// DisableCodexCloaking disables forcing the official Codex identity headers on HTTP/SSE and WebSocket requests.
@@ -341,11 +311,6 @@ type QuotaExceeded struct {
 
 	// SwitchPreviewModel indicates whether to automatically switch to a preview model when a quota is exceeded.
 	SwitchPreviewModel bool `yaml:"switch-preview-model" json:"switch-preview-model"`
-
-	// AntigravityCredits enables credits-based last-resort fallback for Claude models.
-	// When all free-tier auths are exhausted (429/503), the conductor retries with
-	// an auth that has available Google One AI credits.
-	AntigravityCredits bool `yaml:"antigravity-credits" json:"antigravity-credits"`
 }
 
 // RoutingConfig configures how credentials are selected for requests.
@@ -366,8 +331,8 @@ type RoutingConfig struct {
 	SessionAffinityTTL string `yaml:"session-affinity-ttl,omitempty" json:"session-affinity-ttl,omitempty"`
 
 	// SessionAffinitySubagents controls whether subagents (child sessions with parent references)
-	// inherit and bind to the parent's upstream credential across all providers (Claude, Codex,
-	// Antigravity, Gemini), maximizing prompt and KV cache reuse.
+	// inherit and bind to the parent's upstream credential across all providers (Claude, Codex, xAI),
+	// maximizing prompt and KV cache reuse.
 	// When false, subagents are distributed across the credential pool via the fallback selector.
 	// Default: true. Ignored when SessionAffinity is false.
 	SessionAffinitySubagents *bool `yaml:"session-affinity-subagents,omitempty" json:"session-affinity-subagents,omitempty"`
@@ -563,15 +528,14 @@ type ClaudeKey struct {
 	// FingerprintProfile selects the Claude Code request fingerprint for this
 	// credential on Anthropic Messages. Empty/default keeps the caller request
 	// fingerprint and headers, including first-party api.anthropic.com API keys.
-	// "claude-code-cli" opts official Anthropic API keys, custom gateways, and
-	// delegated providers such as Kimi into the Claude Code OAuth CLI Messages
-	// shape (OAuth betas, CCH signing, stable CLI identity) without treating the
-	// credential as a real OAuth token for refresh/profile/runtime semantics.
+	// "claude-code-cli" opts official Anthropic API keys and custom gateways into
+	// the Claude Code OAuth CLI Messages shape (OAuth betas, CCH signing, stable
+	// CLI identity) without treating the credential as a real OAuth token for
+	// refresh/profile/runtime semantics.
 	// CCH is a per-request hash and follows the native gate: it is emitted only on
-	// api.anthropic.com and Vertex, so an opt-in on any other gateway sends the
-	// billing block unsigned and cannot bust that gateway's prompt cache. Kimi
-	// strips the attribution entirely by default and keeps it, unsigned, after an
-	// explicit opt-in. count_tokens keeps the native model/messages/tools shape.
+	// api.anthropic.com, so an opt-in on any other gateway sends the billing block
+	// unsigned and cannot bust that gateway's prompt cache.
+	// count_tokens keeps the native model/messages/tools shape.
 	// Recognized values are defined by NormalizeClaudeFingerprintProfile.
 	FingerprintProfile string `yaml:"fingerprint-profile,omitempty" json:"fingerprint-profile,omitempty"`
 
@@ -844,7 +808,7 @@ type OpenAICompatibility struct {
 	// Disabled prevents this provider from being used for routing.
 	Disabled bool `yaml:"disabled,omitempty" json:"disabled,omitempty"`
 
-	// Prefix optionally namespaces model aliases for this provider (e.g., "teamA/kimi-k2").
+	// Prefix optionally namespaces model aliases for this provider (e.g., "teamA/grok-4").
 	Prefix string `yaml:"prefix,omitempty" json:"prefix,omitempty"`
 
 	// BaseURL is the base URL for the external OpenAI-compatible API endpoint.
